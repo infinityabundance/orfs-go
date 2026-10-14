@@ -88,6 +88,31 @@ explicit **0** whose `# HELP` says so. There is no HTTP endpoint: feed it to a
 Prometheus textfile collector. See [`WORM.md`](WORM.md) for the metric table, the
 append-only WORM case study, and the Grafana dashboard.
 
+### 1c. Go-runtime profiling on the daemon
+
+When a daemon's *own* cost needs explaining — tail latency, GC, allocation,
+locks, resident memory — mount it with `--profile-dir`:
+
+```sh
+orfs mount <backing> <mountpoint> --direct-io --profile-dir /tmp/orfs-prof
+# (optionally --profile-locks: perturbs latency, adds mutex.prof/block.prof)
+```
+
+At shutdown, and at any time on `SIGUSR1`, the daemon writes into that directory:
+
+| file | contents |
+| --- | --- |
+| `runtime-metrics.json` | schema `orfs.runtime.metrics.v1`: windowed GC pauses, scheduler latency, allocation rate, `/sync/mutex/wait/total:seconds`, and **real** `VmRSS`/`VmHWM` from `/proc/self/status`, plus the *effective* `GOGC`/`GOMEMLIMIT`/`GOMAXPROCS` |
+| `heap.prof`, `goroutine.prof` | `runtime/pprof` profiles (inspect with `go tool pprof`) |
+| `mutex.prof`, `block.prof` | only with `--profile-locks` |
+
+`GOGC` and `GOMEMLIMIT` are read from the daemon's environment as usual. Note
+that `GOMEMLIMIT` must be a byte size (`512MiB`) or `off`; `GOMEMLIMIT=unlimited`
+is malformed and the daemon refuses to start. The measured effect of these knobs,
+and when the port is operationally reasonable, is in
+[`RUNTIME.md`](RUNTIME.md); the court that produces `gc-scaling.json` is in
+[`BENCH.md`](BENCH.md) §7g.
+
 ## 2. Recovery runbook
 
 ```sh

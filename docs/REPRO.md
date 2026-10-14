@@ -33,9 +33,11 @@ It bundles the Go toolchain, `fio`, `fuse3`, `psmisc`, `util-linux`, and
 
 | Tool | Purpose |
 | --- | --- |
-| `/out/orfs` | the CLI (the mounted courts) |
+| `/out/orfs` | the CLI (the mounted courts), including `mount --profile-dir` |
 | `/out/fiosummary` | turns `fio` JSON into a compact, labelled receipt |
 | `/out/orfsstress` | the bounded native operation storm |
+| `/out/orfsrw` | the Go-runtime court's bounded 4 KiB random read/write workload driver |
+| `/out/gcsummary` | merges the per-arm receipts into `evidence/performance/gc-scaling.json` |
 
 The image is run as root with the repository's `evidence/` bind-mounted at
 `/evidence`, so receipts land under the repository's `evidence/`.
@@ -85,6 +87,7 @@ courts do not need `/dev/fuse`.
 | 64-thread scaling | `sh scripts/container-baseline.sh` | `evidence/performance/scale.json` |
 | transport probe (FUSE-over-io_uring negotiation) | `sh scripts/container-transport-probe.sh` | none (probe JSON on stdout) |
 | transport court (F0 vs f0-single, 4K randread + FUSE backpressure) | `sh scripts/container-transport.sh` | `evidence/performance/transport.json` |
+| Go-runtime GC scaling (GOGC x GOMEMLIMIT sweep; app tail + Go-runtime metrics) | `sh scripts/container-gc-scaling.sh` | `evidence/performance/gc-scaling.json` |
 | fsstress-equivalent + POSIX extras | `sh scripts/container-fsstress.sh` | `evidence/performance/fsstress.json` |
 | mounted POSIX court | `sh scripts/container-fuse-test.sh` | none (PASS/FAIL) |
 | recovery: capacity / quarantine | `sh scripts/container-go-courts.sh` | `evidence/recovery/capacity.json`, `evidence/recovery/quarantine.json` |

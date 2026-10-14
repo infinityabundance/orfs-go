@@ -34,6 +34,8 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o /out/orfs ./cmd/orfs \
  && CGO_ENABLED=0 go build -o /out/fiosummary ./cmd/fiosummary \
  && CGO_ENABLED=0 go build -o /out/orfsstress ./cmd/orfsstress \
+ && CGO_ENABLED=0 go build -o /out/orfsrw ./cmd/orfsrw \
+ && CGO_ENABLED=0 go build -o /out/gcsummary ./cmd/gcsummary \
  && CGO_ENABLED=0 go build -o /out/transportsummary ./cmd/transportsummary \
  && CGO_ENABLED=0 go build -o /out/orfsworm ./cmd/orfsworm \
  && CGO_ENABLED=0 go build -o /out/fuseuringprobe ./cmd/fuseuringprobe \

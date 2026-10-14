@@ -58,6 +58,8 @@ else
       run_stage "fsstress (bounded op storm + POSIX extras)" sh "$(dirname "$0")/container-fsstress.sh"
       run_stage "baseline (fio vs ext4/tmpfs)" sh "$(dirname "$0")/container-baseline.sh"
       run_stage "transport court (F0 vs f0-single, 4K randread)" sh "$(dirname "$0")/container-transport.sh"
+      run_stage "gc-scaling court (GOGC x GOMEMLIMIT sweep: app tail + Go runtime)" \
+        sh "$(dirname "$0")/container-gc-scaling.sh"
       run_stage "cross-fs determinism (identical log bytes across ext4/xfs/btrfs/tmpfs)" \
         sh "$(dirname "$0")/container-crossfs.sh"
       run_stage "pjdfstest (upstream POSIX syscall suite vs the mount)" \
@@ -71,6 +73,7 @@ else
       skip "fsstress (bounded op storm + POSIX extras)" "no /dev/fuse"
       skip "baseline (fio vs ext4/tmpfs)" "no /dev/fuse"
       skip "transport court (F0 vs f0-single, 4K randread)" "no /dev/fuse"
+      skip "gc-scaling court (GOGC x GOMEMLIMIT sweep: app tail + Go runtime)" "no /dev/fuse"
       skip "cross-fs determinism (identical log bytes across ext4/xfs/btrfs/tmpfs)" "no /dev/fuse"
       skip "pjdfstest (upstream POSIX syscall suite vs the mount)" "no /dev/fuse"
       skip "worm (append-only WORM case study)" "no /dev/fuse"
@@ -84,6 +87,7 @@ else
     skip "fsstress (bounded op storm + POSIX extras)" "--fast"
     skip "baseline (fio vs ext4/tmpfs)" "--fast"
     skip "transport court (F0 vs f0-single, 4K randread)" "--fast"
+    skip "gc-scaling court (GOGC x GOMEMLIMIT sweep: app tail + Go runtime)" "--fast"
     skip "cross-fs determinism (identical log bytes across ext4/xfs/btrfs/tmpfs)" "--fast"
     skip "pjdfstest (upstream POSIX syscall suite vs the mount)" "--fast"
     skip "worm (append-only WORM case study)" "--fast"

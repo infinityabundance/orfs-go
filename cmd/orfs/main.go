@@ -21,6 +21,7 @@ import (
 	"github.com/infinityabundance/orfs-go/internal/doctor"
 	"github.com/infinityabundance/orfs-go/internal/fsck"
 	"github.com/infinityabundance/orfs-go/internal/fusefs"
+	"github.com/infinityabundance/orfs-go/internal/gcruntime"
 	"github.com/infinityabundance/orfs-go/internal/log"
 	"github.com/infinityabundance/orfs-go/internal/manifest"
 	"github.com/infinityabundance/orfs-go/internal/metrics"
@@ -98,7 +99,7 @@ usage: orfs <command> [flags]
   checkpoint <backing> [--json]
   doctor [--capacity --backing <dir> [--reserve bytes]] [--json]
   metrics <backing> [--json] [--skip-verify]
-  mount <backing> <mountpoint> [--direct-io] [--transport f0|f0-single|fuse-uring] [--readers N] [--compat]
+  mount <backing> <mountpoint> [--direct-io] [--transport f0|f0-single|fuse-uring] [--readers N] [--compat] [--profile-dir dir]
   unmount <mountpoint>
   stat <backing> [--json]
 
@@ -473,6 +474,8 @@ func cmdMount(args []string) int {
 	attrTTL := fs.Float64("attr-ttl-ms", 1000, "attribute cache TTL in ms")
 	entryTTL := fs.Float64("entry-ttl-ms", 1000, "entry cache TTL in ms")
 	fsName := fs.String("fsname", "", "filesystem name")
+	profileDir := fs.String("profile-dir", "", "dump runtime-metrics.json + pprof profiles here on shutdown and on SIGUSR1 (Go-runtime court)")
+	profileLocks := fs.Bool("profile-locks", false, "also enable mutex/block profiling and write mutex.prof/block.prof (perturbs latency; for the lock-profile phase)")
 	compat := fs.Bool("compat", volume.EnvironCompat(), "Rust-reference compatibility profile: new writes use only the reference's registry and semantics (no CTIME_UPDATE, no special files)")
 	pos, err := parseFlags(fs, args)
 	if err != nil {
@@ -527,10 +530,43 @@ func cmdMount(args []string) int {
 	}
 	fmt.Printf("mounted %s at %s (transport %s)\n", pos[0], pos[1], serving.Mode)
 
+	// Optional Go-runtime instrumentation for the runtime court. It is armed
+	// before any workload so the window brackets the whole serving interval. The
+	// start snapshot is taken here; the end snapshot and the pprof profiles are
+	// written on shutdown and on SIGUSR1, so a workload driver can request a dump
+	// without stopping the daemon.
+	var profileDump func()
+	if *profileDir != "" {
+		if *profileLocks {
+			gcruntime.EnableLockProfiles()
+		}
+		start := gcruntime.Capture()
+		profileDump = func() {
+			end := gcruntime.Capture()
+			err := gcruntime.WriteProfileDir(*profileDir, start, end, gcruntime.Options{
+				Locks: *profileLocks,
+				Note:  "start = the moment the mount began serving; end = this dump. Delta windows the cumulative runtime metrics over that interval.",
+			})
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "orfs: profile dump failed: %v\n", err)
+			}
+		}
+		usr1 := make(chan os.Signal, 1)
+		signal.Notify(usr1, syscall.SIGUSR1)
+		go func() {
+			for range usr1 {
+				profileDump()
+			}
+		}()
+	}
+
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
 	server.Unmount()
+	if profileDump != nil {
+		profileDump()
+	}
 	// Persist the process-scoped metrics snapshot (derived, non-authoritative) so
 	// an offline `orfs metrics` can report this run's barrier latency and batch
 	// counters. Deleting the sidecar changes nothing recoverable.

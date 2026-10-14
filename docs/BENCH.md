@@ -402,6 +402,53 @@ recovered root. This is a process kill, not power loss — bytes in the page cac
 survive it, so device-cache reordering and torn sectors remain the domain of the
 simulated `internal/powerloss` court.
 
+## 7g. Go-runtime GC-scaling court
+
+Court: `scripts/gc-scaling-court.sh` + `cmd/orfsrw` (workload driver) +
+`orfs mount --profile-dir` (runtime dump) + `cmd/gcsummary` (merge), run inside
+the court container by `scripts/container-gc-scaling.sh`.
+
+Measures *what the Go runtime costs the daemon*. It drives a mounted volume with
+**64 concurrent 4 KiB random readers plus 8 concurrent writers** (`cmd/orfsrw`:
+exact application p50/p99/p99.9, throughput, errno-classified errors) while the
+mount daemon, told `--profile-dir`, writes a windowed runtime-metrics dump on
+shutdown: GC stop-the-world pauses (`/sched/pauses/total/gc:seconds`), scheduler
+latency (`/sched/latencies:seconds`), allocation rate (`/gc/heap/allocs:bytes`),
+lock wait (`/sync/mutex/wait/total:seconds`), and **real** resident memory
+(`/proc/self/status` `VmRSS`/`VmHWM`), plus `heap.prof` and (with
+`--profile-locks`) `mutex.prof`/`block.prof`. It sweeps `GOGC`
+(`400/100/50/20/off`) and `GOMEMLIMIT` (`256MiB/512MiB/off`).
+
+Run:
+
+```sh
+sh scripts/container-gc-scaling.sh
+```
+
+Receipt: `evidence/performance/gc-scaling.json` (schema
+`orfs.performance.gc-scaling.v1`). Measured (this host, container, 9-arm
+**bounded** spread, ~5 s per arm, one run, 2 GiB / 4 CPU):
+
+| GOGC | GOMEMLIMIT | p50 | p99 | p99.9 | kIOPS | gcN | gcp99 | RSS MiB | mutex s |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 400 | off | 51.0 µs | 14.9 ms | 38.3 ms | 139.4 | 1046 | 57 µs | 30.2 | 110.9 |
+| 100 | off | 71.4 µs | 9.3 ms | 21.8 ms | 130.3 | 6510 | 65 µs | 17.0 | 135.7 |
+| 50 | off | 142.4 µs | 9.9 ms | 25.4 ms | 77.3 | 8501 | 328 µs | 12.9 | 156.1 |
+| 20 | off | 210.7 µs | 4.6 ms | 14.8 ms | 95.3 | 13007 | 65 µs | 13.9 | 159.6 |
+| 100 | 256MiB | 70.1 µs | 9.2 ms | 20.6 ms | 134.2 | 6603 | 65 µs | 18.7 | 132.2 |
+| 100 | 512MiB | 71.3 µs | 9.6 ms | 21.3 ms | 130.6 | 6464 | 57 µs | 15.1 | 133.6 |
+| off | 256MiB | 78.1 µs | 20.8 ms | 64.2 ms | 104.1 | 51 | 65 µs | **248.3** | 95.8 |
+| off | 512MiB | 84.3 µs | 21.4 ms | **73.6 ms** | 98.2 | 23 | 49 µs | **496.1** | 87.9 |
+| off | off | **daemon_died** | — | — | — | — | — | — | — |
+
+Stated plainly: **GC pauses are not the tail** (p99 pause ≤ 328 µs everywhere);
+the tail is the allocation rate (~2 GB/s) and a single shared `RWMutex` (88–160
+goroutine-seconds of lock wait over ~6 s — ~15–27 goroutines blocked on
+average), and `GOGC=off` with no memory limit is fatal (the daemon was
+OOM-killed ~1.3 s in). Lower `GOGC` buys tail at the cost of median; `GOMEMLIMIT`
+is inert until it binds. Full analysis and the GC-trace/lock-profile excerpts:
+[`RUNTIME.md`](RUNTIME.md).
+
 ## 8. The frontier: measured versus not yet measured
 
 Measured today (all bounded, laboratory conditions):
@@ -424,6 +471,7 @@ Measured today (all bounded, laboratory conditions):
 | group commit | 4.31× throughput / 4.49× better p50 vs a barrier per publish (bounded by the backing store's fsync cost) | `evidence/performance/groupcommit.json` |
 | per-read allocations | authoritative 4 KiB read: 2 -> 1 allocs/op (~470 ns/op); the returned `[]byte` is the only allocation | `evidence/performance/allocs.json` |
 | crash consistency (real `SIGKILL`) | 1000 kills mid-append: 379 abandoned tails (4 torn / 375 uncommitted), all quarantined (moved, never truncated); 0 truncations / 0 prefix mismatches / 0 recover failures; `verify --deep` clean | `evidence/crash.json` |
+| Go-runtime GC scaling | 9-arm GOGC×GOMEMLIMIT sweep under 64 readers + 8 writers: p99.9 14.8 ms (`GOGC=20`) … 73.6 ms (`GOGC=off`+512MiB); GC pauses ≤ 328 µs (not the tail); ~2 GB/s allocation; `GOGC=off`+no limit OOM-killed ~1.3 s in; lock wait dominant | `evidence/performance/gc-scaling.json` |
 
 Explicitly not yet measured (absence is deliberate, not implied):
 
@@ -434,7 +482,9 @@ Explicitly not yet measured (absence is deliberate, not implied):
 | Mount latency after a large (2^30-byte) history | not run (`OPERATIONS.md` §3) |
 
 No performance superiority is claimed beyond the measured planner p50 figure and
-the inode-spine measurements.
+the inode-spine measurements. The Go-runtime court measures the daemon's own
+cost; it does not claim the port is faster than a native filesystem (see
+[`RUNTIME.md`](RUNTIME.md) §6).
 
 ## 9. Reproduce
 
