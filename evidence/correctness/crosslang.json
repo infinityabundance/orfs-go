@@ -2,9 +2,9 @@
   "schema": "orfs.correctness.crosslang.v1",
   "generated_by": "scripts/crosslang-court.sh",
   "result": "PASS",
-  "go_binary_sha256": "2224bec012f6ced0938f10c0e649ae13fb87d9803d165327b79d6e4261e5ddfc",
+  "go_binary_sha256": "0e314fed4fdd9178ba072e987a74358b191051715c363c0ea23853e2002c6ded",
   "rust_binary_sha256": "e62b4e86df49a27ad11d07994c8a7cde54064828ad137392153c8a23302c1c6e",
-  "xlang_binary_sha256": "e99b1ed35b348f865e770c6e83c3ab220463c558bba0ac0a284a8f93bef70249",
+  "xlang_binary_sha256": "c7ba93e0486a9155e8b109f3919aec2983717f8fd451d905fb15eec1e81eb399",
   "rust_version": "orfs 0.2.0",
   "cases": [
     {"id": "rust_fixtures_read_by_go", "direction": "rust->go", "status": "pass", "detail": "legacy_v0+current_v1: Go verify --deep PASS; replay = /hello.txt mode=0644 size=12 sha256=aec5a165bed9d7d50887dc896e73e3e474a636cc071ae3ac03281ee51cf5feae; Go decode+re-encode is byte-identical to the Rust frames"},

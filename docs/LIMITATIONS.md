@@ -17,6 +17,35 @@ amplification curve, group commit); the transport court now runs, and F2 is
 named unreachable rather than deferred (`docs/TRANSPORT.md`). No number that a
 court did not measure is published.
 
+### 1.1 The append path: the O(N²) write cost is fixed; extent-count growth remains
+
+An OrFS append is a new `DATA_EXTENT` whose bytes live at a *new* log offset, so
+a file's logical extents cannot coalesce and its extent count grows **1:1 with
+its append count** — a property of non-withdrawal, shared with the Rust
+reference. The head-to-head court's first run exposed the consequence: the extent
+map was a flat slice, so `Clone` (once per inode clone on every commit) and the
+write splice were both `O(E)`, making each append `O(N)` and an append run
+**`O(N²)`** — 3,097 ops/s single-writer, 8.8× behind the reference.
+
+That is now fixed. `internal/index.ExtentMap` is a persistent, path-copying
+**treap** (a faithful port of the reference's Phase 27 `PMap`: clone is `O(1)`,
+a write is `O(log E + k)`, a read visits only intersecting extents and allocates
+nothing). Per-append cost is measured **flat** from 256 to 8,192 appends
+(`evidence/performance/append-scaling.json`, growth ratio 1.001×;
+`docs/BENCH.md` §7i), and the court now measures **18,533 ops/s** single-writer —
+within 1.5× of the reference instead of 8.8× behind it.
+
+What nevertheless remains, and is **not** claimed: `E` still grows 1:1 with
+appends, so an append-only file's extent list — and therefore its index
+checkpoint snapshot — grows with its retained history. A whole-index snapshot
+payload is bounded by the record payload limit (64 MiB), so roughly **2.6 million
+cumulative file extents** is the point at which `TakeCheckpoint` refuses
+(`NotSupported`); past that the checkpoint simply cannot be written, and the
+volume falls back to full replay (commits themselves are unaffected — the
+checkpoint is best effort). No extent-list compaction or run coalescing is
+implemented, and the extent list is not compressed on disk. Neither is a number a
+court has measured for time-to-refusal.
+
 ## 2. Mount replay is bounded by the checkpoint interval; the open scan is not
 
 Recovery reconstructs the index by **replaying** the committed log. A usable

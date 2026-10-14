@@ -75,8 +75,8 @@ func TestSnapshotRoundTrip(t *testing.T) {
 	if got.Inodes[2].Extents.Size() != idx.Inodes[2].Extents.Size() {
 		t.Fatal("extent size did not round-trip")
 	}
-	if len(got.Inodes[2].Extents.extents) != 2 {
-		t.Fatalf("want 2 extents, got %d", len(got.Inodes[2].Extents.extents))
+	if got.Inodes[2].Extents.Count() != 2 {
+		t.Fatalf("want 2 extents, got %d", got.Inodes[2].Extents.Count())
 	}
 }
 

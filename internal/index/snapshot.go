@@ -140,8 +140,8 @@ func encodeSnapshotInode(b []byte, in *Inode) []byte {
 	var exts []Extent
 	var size uint64
 	if in.Extents != nil {
-		exts = in.Extents.extents
-		size = in.Extents.size
+		exts = in.Extents.Extents()
+		size = in.Extents.Size()
 	}
 	b = binary.LittleEndian.AppendUint64(b, size)
 	b = binary.LittleEndian.AppendUint32(b, uint32(len(exts)))
@@ -266,17 +266,17 @@ func decodeSnapshotInode(r *snapshotReader) (*Inode, error) {
 
 	extentSize := r.u64()
 	extentCount := r.count(minExtentEntry)
-	m := &ExtentMap{size: extentSize}
-	if extentCount > 0 {
-		m.extents = make([]Extent, 0, capped(extentCount, 4096))
-	}
+	m := NewExtentMap()
+	m.size = extentSize
 	for i := uint32(0); i < extentCount && r.err == nil; i++ {
 		var e Extent
 		e.Start = r.u64()
 		e.Length = r.u64()
 		e.Kind = ExtentKind(r.u8())
 		e.DataOffset = r.u64()
-		m.extents = append(m.extents, e)
+		if r.err == nil {
+			m.root = setExt(m.root, e)
+		}
 	}
 	in.Extents = m
 	if r.err != nil {

@@ -51,6 +51,14 @@ CAP_MEMSWAP_LIMIT=${CAP_MEMSWAP_LIMIT:-2g}
 CAP_CPUS=${CAP_CPUS:-4}
 CAP_PIDS_LIMIT=${CAP_PIDS_LIMIT:-1024}
 
+# How many arms a fully measured system is expected to contribute. A mounted
+# system that loses an arm (its daemon died, an I/O error, ...) leaves a partial
+# receipt; that is reported, never hidden behind a PASS.
+N_WRITERS=$(echo "$WRITERS" | wc -w)
+N_READERS=$(echo "$READERS" | wc -w)
+N_BLOCKS=$(echo "$BLOCK_SIZES" | wc -w)
+ARMS_PER_SYS=$((N_WRITERS + N_READERS * N_BLOCKS))
+
 if [ ! -e /dev/fuse ]; then
   echo "oss-compare-court: SKIPPED (no /dev/fuse)"
   exit 0
@@ -80,6 +88,12 @@ mkdir -p "$GO_MNT" "$RS_MNT"
 
 GO_PID=""; RS_PID=""
 GO_MOUNTED=0; RS_MOUNTED=0
+
+# Arm bookkeeping: a failed arm is counted and named so the receipt can say
+# exactly which coordinates are missing instead of quietly shrinking.
+ARM_FAILS=0
+SYS_FAILS=0
+: > "$WORK/failed-arms"
 
 cleanup() {
   if [ "$GO_MOUNTED" = 1 ]; then
@@ -190,8 +204,10 @@ run_arm() { # $1=system $2=mnt $3=workload $4=writers $5=readers $6=bs
           -writers "$w" -append-prefix append -record-bytes "$RECORD_BYTES" \
           -seconds "$APPEND_SECONDS" -max-bytes-per-writer "$((MAX_APPEND_MIB * 1024 * 1024))" \
           -seed "$SEED" -out "$out" >"$out.log" 2>&1; then
-        echo "oss-compare-court: WARN: arm $sys/$wl writers=$w failed; skipping" >&2
+        echo "oss-compare-court: WARN: arm $sys/$wl writers=$w FAILED; recorded as missing" >&2
         cat "$out.log" >&2 || true
+        echo "$sys/$wl writers=$w" >> "$WORK/failed-arms"
+        ARM_FAILS=$((ARM_FAILS + 1))
         return 1
       fi
       ;;
@@ -199,8 +215,10 @@ run_arm() { # $1=system $2=mnt $3=workload $4=writers $5=readers $6=bs
       if ! "$ORFSCOMPARE" run -dir "$mnt" -system "$sys" -workload read \
           -readers "$r" -read-file data.bin -bs "$bs" \
           -seconds "$READ_SECONDS" -seed "$SEED" -out "$out" >"$out.log" 2>&1; then
-        echo "oss-compare-court: WARN: arm $sys/$wl readers=$r bs=$bs failed; skipping" >&2
+        echo "oss-compare-court: WARN: arm $sys/$wl readers=$r bs=$bs FAILED; recorded as missing" >&2
         cat "$out.log" >&2 || true
+        echo "$sys/$wl readers=$r bs=$bs" >> "$WORK/failed-arms"
+        ARM_FAILS=$((ARM_FAILS + 1))
         return 1
       fi
       ;;
@@ -211,21 +229,42 @@ run_arm() { # $1=system $2=mnt $3=workload $4=writers $5=readers $6=bs
 
 run_system() { # $1 = system label, $2 = mountpoint
   sys=$1; mnt=$2
-  for w in $WRITERS; do
-    echo "oss-compare-court: $sys append writers=$w (${APPEND_SECONDS}s)"
-    run_arm "$sys" "$mnt" append "$w" 0 0 || true
-  done
+  _before=$ARM_FAILS
+  # Reads first, on a quiet volume: the append arms retain their whole history
+  # (non-withdrawal), so running them first would evict the read file from the
+  # backing page cache and make with --direct-io every read a backing I/O. Both
+  # systems are measured in the same order, so the comparison is symmetric.
   for bs in $BLOCK_SIZES; do
     for r in $READERS; do
       echo "oss-compare-court: $sys read bs=$bs readers=$r (${READ_SECONDS}s)"
       run_arm "$sys" "$mnt" read 0 "$r" "$bs" || true
     done
   done
+  for w in $WRITERS; do
+    echo "oss-compare-court: $sys append writers=$w (${APPEND_SECONDS}s)"
+    run_arm "$sys" "$mnt" append "$w" 0 0 || true
+  done
+  SYS_FAILS=$((ARM_FAILS - _before))
 }
 
+GO_FAILED=0; RS_FAILED=0
 run_system "OrFS-GO" "$GO_MNT"
+GO_FAILED=$SYS_FAILS
+
+# Release the finished system before the next one's arms. The arms are strictly
+# sequential, so this changes no measurement; it stops the two daemons (and their
+# volumes' page cache) from competing for the single shared memory cap, which is
+# what made a long Rust append arm get OOM-killed on a 2 GiB cap. The receipt
+# records this.
+if [ "$GO_MOUNTED" = 1 ]; then
+  "$ORFS" unmount "$GO_MNT" >/dev/null 2>&1 || umount -l "$GO_MNT" 2>/dev/null || true
+  GO_MOUNTED=0
+  rm -rf "$GO_VOL"
+fi
+
 if [ "$RS_MOUNTED" = 1 ]; then
   run_system "OrFS-Rust" "$RS_MNT"
+  RS_FAILED=$SYS_FAILS
 fi
 
 # --- comparability block ---------------------------------------------------
@@ -261,6 +300,13 @@ KERNEL=$(uname -sr | json_escape)
 BACKING_FS=$(stat -f -c %T "$WORK" 2>/dev/null || echo "?")
 READ_MIB_JSON=$READ_MIB
 MAX_APPEND_MIB_JSON=$MAX_APPEND_MIB
+
+# failed_arms renders the missing coordinates as a JSON string array (empty if
+# every expected arm ran).
+FAILED_JSON=""
+if [ -s "$WORK/failed-arms" ]; then
+  FAILED_JSON=$(sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' "$WORK/failed-arms" | sed -e 's/^/  "/' -e 's/$/"/' | paste -sd, -)
+fi
 
 COMP="$WORK/comparability.json"
 cat > "$COMP" <<EOF
@@ -323,12 +369,19 @@ cat > "$COMP" <<EOF
     "Backing I/O: the Go daemon writes synchronously (pwrite/pread); Rust was pinned to --backing-io sync to match, because its default on this host is io_uring and the Go build has no io_uring backing path.",
     "Both are mounted with --direct-io (FOPEN_DIRECT_IO) and, for the append arm, one fsync per 4 KiB record: durability is equal even though the implementations differ.",
     "Both volumes use the same segment size and the same seeded 4 KiB record payload; the read file is the same size and the same deterministic content.",
-    "Container caps are shared (the same container enforces them for both mounts), so the two systems cannot be given different resources.",
+    "Container caps are shared (the same container enforces them for both mounts), so the two systems cannot be given different resources. The two systems' arms run strictly sequentially and a finished system's daemon and volume are released before the next system's arms, so neither competes for the shared memory cap.",
+    "Within each system the read arms run before the append arms, on a quiet volume: the append arms retain unbounded history (non-withdrawal), so measuring appends first would evict the read file from the backing page cache and make every --direct-io read a backing I/O. Both systems are measured in the same order.",
     "Host-level variance (page cache state, kernel scheduler, backing device write cache) is not controlled beyond the shared container: run-to-run variance is expected and unquantified here."
   ],
   "payload_size_bytes": ${RECORD_BYTES},
   "not_ranked": true,
-  "note": "Two different implementations of OrFS, measured on the same machine and the same device with the same driver and equal durability. Differences above are the comparability caveats; no row is a ranking. A system that could not be run the same way is recorded as an asymmetry, not a parity claim."
+  "arms": {
+    "expected_per_system": ${ARMS_PER_SYS},
+    "OrFS-GO": {"ran": $((ARMS_PER_SYS - GO_FAILED)), "failed": ${GO_FAILED}},
+    "OrFS-Rust": {"ran": $((ARMS_PER_SYS - RS_FAILED)), "failed": ${RS_FAILED}},
+    "failed": [${FAILED_JSON}]
+  },
+  "note": "Two different implementations of OrFS, measured on the same machine and the same device with the same driver and equal durability. The two systems' arms are run strictly sequentially and a finished system's daemon and volume are released before the next system's arms, so neither competes for the shared memory cap (this changes no measured arm). Differences above are the comparability caveats; no row is a ranking. A system that could not be run the same way is recorded as an asymmetry, not a parity claim. The arms block names every coordinate that is missing: ran + failed = expected_per_system for each system that mounted."
 }
 EOF
 
@@ -356,8 +409,21 @@ if [ "$rows" -eq 0 ]; then
   echo "oss-compare-court: FAIL: receipt has no rows" >&2
   exit 1
 fi
+
+# Honest verdict. A mounted system that lost an arm means the receipt is
+# incomplete at known coordinates; that is a FAIL, never a PASS.
+if [ "$GO_FAILED" -gt 0 ]; then
+  echo "oss-compare-court: FAIL: OrFS-GO lost $GO_FAILED/$ARMS_PER_SYS arm(s); the receipt is partial" >&2
+  echo "oss-compare-court: missing: $(tr '\n' ';' < "$WORK/failed-arms")" >&2
+  exit 1
+fi
+if [ "$RS_MOUNTED" = 1 ] && [ "$RS_FAILED" -gt 0 ]; then
+  echo "oss-compare-court: FAIL: OrFS-Rust lost $RS_FAILED/$ARMS_PER_SYS arm(s) (its daemon likely died mid-run); the receipt is partial" >&2
+  echo "oss-compare-court: missing: $(tr '\n' ';' < "$WORK/failed-arms")" >&2
+  exit 1
+fi
 if [ "$RS_MOUNTED" = 1 ]; then
-  echo "oss-compare-court: PASS ($rows row(s); OrFS-GO and OrFS-Rust both mounted)"
+  echo "oss-compare-court: PASS ($rows row(s); $ARMS_PER_SYS/$ARMS_PER_SYS arms on each of OrFS-GO and OrFS-Rust)"
 else
   echo "oss-compare-court: PASS ($rows row(s); OrFS-Rust NOT mounted — see the comparability caveat)"
 fi

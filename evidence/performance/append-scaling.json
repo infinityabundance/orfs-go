@@ -1,0 +1,49 @@
+{
+  "schema": "orfs.performance.append-scaling.v1",
+  "record_bytes": 4096,
+  "warmup_ops": 64,
+  "backing": "container overlay (t.TempDir)",
+  "points": [
+    {
+      "appends": 256,
+      "extents": 256,
+      "mean_ns_per_append": 33468.203125,
+      "total_ns": 6425895
+    },
+    {
+      "appends": 512,
+      "extents": 512,
+      "mean_ns_per_append": 30078.52901785714,
+      "total_ns": 13475181
+    },
+    {
+      "appends": 1024,
+      "extents": 1024,
+      "mean_ns_per_append": 29409.783333333333,
+      "total_ns": 28233392
+    },
+    {
+      "appends": 2048,
+      "extents": 2048,
+      "mean_ns_per_append": 29090.584677419356,
+      "total_ns": 57715720
+    },
+    {
+      "appends": 4096,
+      "extents": 4096,
+      "mean_ns_per_append": 27958.024553571428,
+      "total_ns": 112726755
+    },
+    {
+      "appends": 8192,
+      "extents": 8192,
+      "mean_ns_per_append": 27548.426673228347,
+      "total_ns": 223913612
+    }
+  ],
+  "growth_ratio": 0.8231223699204302,
+  "bounded": true,
+  "note": "the per-append cost must not grow with the file's retained extent count; a rising curve means the extent map has regressed to O(E) per write (structural sharing lost). Measured on this host; run-to-run variance is expected.",
+  "method": "one 4 KiB append at EOF per transaction to a single file; equal durability (each append is its own authoritatively committed transaction with its durability barrier); mean is over appends after a fixed warm-up, on a fresh volume per point.",
+  "extent_growth": "extents grow 1:1 with appends by construction (each 4 KiB write's bytes live at a distinct, non-contiguous log offset, so logical extents cannot coalesce); the cost must be flat regardless."
+}

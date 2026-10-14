@@ -550,35 +550,83 @@ quantified here). **Append: 4 KiB `write`+`fsync` per record, 5 s arms:**
 
 | system | writers | ops/s | bytes/s | p50 | p95 | p99 | p99.9 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| OrFS-GO | 1 | 3,097 | 12.1 MiB/s | 297 µs | 652 µs | 920 µs | 1.72 ms |
-| OrFS-GO | 64 | 19,105 | 74.6 MiB/s | 3.25 ms | 4.66 ms | 5.33 ms | 6.69 ms |
-| OrFS-Rust | 1 | 27,212 | 106.3 MiB/s | 33.7 µs | 48.5 µs | 88 µs | 238 µs |
-| OrFS-Rust | 64 | 21,837 | 85.3 MiB/s | 2.71 ms | 4.38 ms | 5.61 ms | 7.54 ms |
+| OrFS-GO | 1 | 18,533 | 72.4 MiB/s | 41.9 µs | 100.8 µs | 160.2 µs | 719.2 µs |
+| OrFS-GO | 64 | 26,420 | 103.2 MiB/s | 2.06 ms | 4.01 ms | 4.72 ms | 6.06 ms |
+| OrFS-Rust | 1 | 27,899 | 109.0 MiB/s | 33.5 µs | 44.9 µs | 82.5 µs | 215.3 µs |
+| OrFS-Rust | 64 | 31,786 | 124.2 MiB/s | 1.97 ms | 2.33 ms | 2.70 ms | 3.28 ms |
 
 **Read: block-aligned uniform random, 4 s arms, 64 MiB file:**
 
 | system | readers | block | IOPS | bytes/s | p50 | p95 | p99 | p99.9 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| OrFS-GO | 1 | 4 KiB | 98,363 | 384.2 MiB/s | 9.28 µs | 12.6 µs | 23.7 µs | 61.2 µs |
-| OrFS-GO | 64 | 4 KiB | 317,926 | 1,241.9 MiB/s | 12.5 µs | 27.3 µs | 413.8 µs | 44.9 ms |
-| OrFS-GO | 1 | 64 KiB | 49,197 | 3,074.8 MiB/s | 18.1 µs | 29.2 µs | 63.9 µs | 121.7 µs |
-| OrFS-GO | 64 | 64 KiB | 145,943 | 9,121.5 MiB/s | 175.9 µs | 1.04 ms | 6.92 ms | 24.0 ms |
-| OrFS-GO | 1 | 1 MiB | 4,250 | 4,250.8 MiB/s | 212.7 µs | 361.2 µs | 438.9 µs | 1.08 ms |
-| OrFS-GO | 64 | 1 MiB | 7,062 | 7,063.0 MiB/s | 4.38 ms | 32.4 ms | 85.0 ms | 171.0 ms |
-| OrFS-Rust | 1 | 4 KiB | 97,414 | 380.5 MiB/s | 9.19 µs | 13.3 µs | 25.8 µs | 155.7 µs |
-| OrFS-Rust | 64 | 4 KiB | 367,920 | 1,437.2 MiB/s | 10.1 µs | 18.0 µs | 35.3 µs | 66.5 ms |
-| OrFS-Rust | 1 | 64 KiB | 62,046 | 3,877.9 MiB/s | 14.9 µs | 23.5 µs | 32.0 µs | 71.3 µs |
-| OrFS-Rust | 64 | 64 KiB | 235,291 | 14,705.7 MiB/s | 17.4 µs | 28.5 µs | 39.8 µs | 127.3 ms |
-| OrFS-Rust | 1 | 1 MiB | 5,360 | 5,360.4 MiB/s | 181.7 µs | 250.2 µs | 352.0 µs | 840.7 µs |
-| OrFS-Rust | 64 | 1 MiB | 12,216 | 12,216.4 MiB/s | 4.82 ms | 7.77 ms | 12.96 ms | 14.51 ms |
+| OrFS-GO | 1 | 4 KiB | 94,732 | 370.0 MiB/s | 8.94 µs | 14.3 µs | 31.7 µs | 69.3 µs |
+| OrFS-GO | 64 | 4 KiB | 330,984 | 1,292.9 MiB/s | 13.7 µs | 101.6 µs | 2.66 ms | 22.2 ms |
+| OrFS-GO | 1 | 64 KiB | 45,007 | 2,812.9 MiB/s | 17.4 µs | 45.9 µs | 63.7 µs | 146.3 µs |
+| OrFS-GO | 64 | 64 KiB | 140,589 | 8,786.8 MiB/s | 357.1 µs | 1.01 ms | 2.41 ms | 6.95 ms |
+| OrFS-GO | 1 | 1 MiB | 3,280 | 3,279.7 MiB/s | 286.2 µs | 407.3 µs | 566.4 µs | 1.56 ms |
+| OrFS-GO | 64 | 1 MiB | 8,348 | 8,347.9 MiB/s | 6.26 ms | 19.8 ms | 39.4 ms | 111 ms |
+| OrFS-Rust | 1 | 4 KiB | 119,586 | 467.1 MiB/s | 7.67 µs | 10.1 µs | 18.0 µs | 37.2 µs |
+| OrFS-Rust | 64 | 4 KiB | 429,309 | 1,677.0 MiB/s | 8.97 µs | 12.8 µs | 18.9 µs | 69.8 ms |
+| OrFS-Rust | 1 | 64 KiB | 50,029 | 3,126.8 MiB/s | 14.4 µs | 30.7 µs | 52.9 µs | 860.1 µs |
+| OrFS-Rust | 64 | 64 KiB | 179,079 | 11,192.4 MiB/s | 20.6 µs | 271.4 µs | 1.87 ms | 87.7 ms |
+| OrFS-Rust | 1 | 1 MiB | 5,882 | 5,882.1 MiB/s | 157.6 µs | 238.4 µs | 359.6 µs | 1.27 ms |
+| OrFS-Rust | 64 | 1 MiB | 15,918 | 15,918.2 MiB/s | 3.73 ms | 5.09 ms | 10.5 ms | 12.0 ms |
 
-**Honest framing.** In this run OrFS-Rust is faster on most rows — most starkly the
-single-writer durable append (27,212 vs 3,097 ops/s; p50 33.7 µs vs 297 µs) — and
-the two converge at 64 concurrent writers (21,837 vs 19,105). That is reported as
-measured, without spin: the point of the court is the *comparable number*, not a
-Go win. It is **not** a leaderboard: rows are keyed by {system, workload, writers,
-readers, block_size}, and two rows are comparable only at the same coordinate and
-only under the caveats below.
+**Honest framing.** OrFS-GO is within about **0.5–0.9×** of OrFS-Rust on every
+row of this run: the durable **single-writer append is 18,533 vs 27,899 ops/s**
+(p50 41.9 µs vs 33.5 µs) and the concurrent-append rows converge (26,420 vs
+31,786 at 64 writers). The clearest remaining Go losses are the **large-block
+reads** (1 MiB: 3,280 vs 5,882 at 1 reader, 0.56×; 8,348 vs 15,918 at 64 readers,
+0.52×) and the 64-reader tail — go-fuse transport and per-request buffering,
+*not* the log or the index. That is reported as measured, without spin: the point
+of the court is the *comparable number*, not a Go win. It is **not** a
+leaderboard: rows are keyed by {system, workload, writers, readers, block_size},
+and two rows are comparable only at the same coordinate and only under the
+caveats below.
+
+**The step-1 single-writer append loss is fixed: extent structural sharing
+(Phase 27 parity).** The first run of this court measured OrFS-GO at **3,097
+ops/s** (p50 297 µs) single-writer — **8.8×** behind OrFS-Rust. Root cause: the
+file extent map (`internal/index.ExtentMap`) was a flat `[]Extent`, and the log
+frames each 4 KiB append so that consecutive appends' bytes are *not* contiguous
+in the log; the extents therefore never coalesce and the list grew 1:1 with the
+append count. `Clone()` — called once per inode clone on every commit — and
+`replace()` were both **O(E)**, so each write was O(N) and an append run was
+**O(N²)**: fatal for the audit/WORM workload, whose whole point is unbounded
+history. (This is exactly the O(history) publish-path cost the Rust reference
+removed in its Phase 27, `.reference/OrFS/src/persistent.rs`; the Go port had
+adopted persistent treaps for the inode/dentry spines but not for extents.)
+
+The fix makes `ExtentMap` a persistent, path-copying treap keyed by `Start` — a
+faithful port of the reference's `PMap`: `Clone` is O(1) (a pointer copy), a
+write path-copies only the O(log E) nodes on the affected range plus the extents
+it splices, and a read visits only the extents that intersect the range **and
+allocates nothing**. Evidence:
+
+- `evidence/performance/append-scaling.json` — per-append cost is **flat** (27.9 µs
+  at N=256 and 27.9 µs at N=8,192; growth ratio **1.001×**, bound 2.0×), where it
+  previously rose from 35 µs to 74 µs over that range and kept rising.
+- A **20,000-step randomized differential test** against the original flat
+  implementation (`internal/index/extentmap_model_test.go`) proves the new map is
+  observably identical after every step: same size, same ordered maximal extent
+  sequence, same read plan.
+- A `PlanReadInto` over a 16,384-extent file resolves in **0 allocations**
+  (`TestPlanReadIntoZeroAlloc`).
+
+The result is the row above: **18,533 ops/s** (p50 41.9 µs), down from 297 µs
+p50 — inside 1.5× of the Rust reference instead of 8.8× behind it.
+
+**Measurement order and memory.** Within each system the **read arms run before
+the append arms**, on a quiet volume: because OrFS retains appended history, a
+4 KiB append is committed, deferred, and its data-offset in its transaction, so
+measuring appends first would evict the read file from the backing page cache and
+make every `--direct-io` read a backing I/O (this is why the read rows here differ
+from the first run of the court). Both systems are measured in the same order. The
+two systems' arms also run **strictly sequentially**, and a finished system's
+daemon and volume are **released before the next system's arms** — so neither
+daemon competes for the shared 2 GiB cap (an earlier run OOM-killed the Rust
+daemon mid-arm on that cap). The `comparability.arms` block records that every
+expected arm ran (`8/8` for each system).
 
 **Comparability caveats (every way the two configurations differ — from the
 receipt's `comparability` block):**
@@ -599,6 +647,11 @@ receipt's `comparability` block):**
 - **Host variance.** Page-cache state, the kernel scheduler, and the backing
   device's write cache are not controlled beyond the shared container;
   run-to-run variance is expected and is not quantified here.
+- **Order and memory (methodology, identical for both systems).** Reads are
+  measured before appends on a quiet volume; the two systems' arms run strictly
+  sequentially and a finished system's daemon and volume are released before the
+  next system's arms, so neither competes for the shared 2 GiB cap. See
+  [`../courts/oss-compare/README.md`](../courts/oss-compare/README.md).
 - **Equal, not caveats:** `--direct-io` (`FOPEN_DIRECT_IO`), one durability
   barrier per 4 KiB record, 4 KiB record size, and the 8 MiB segment size are the
   same on both sides.

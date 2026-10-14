@@ -63,6 +63,22 @@ Design guarantees:
 - **Prepare outside the window.** `prepare` creates each writer's file (and the
   seeded read file) before the measured window, so file creation is not charged to
   the append number and every writer has a dedicated file.
+- **Order and isolation.** Within each system the **read arms run before the append
+  arms**, on a quiet volume: OrFS retains appended history, so measuring appends
+  first would evict the read file from the backing page cache and turn every
+  `--direct-io` read into a backing I/O. The two systems' arms run **strictly
+  sequentially**, and a finished system's daemon and volume are released before
+  the next system's arms, so neither competes for the shared memory cap (an
+  earlier run OOM-killed the Rust daemon mid-arm on a 2 GiB cap).
+
+### The receipt can be partial, and says so
+
+The comparability block carries an `arms` object:
+`{expected_per_system, OrFS-GO:{ran,failed}, OrFS-Rust:{ran,failed}, failed:[…]}`.
+Every arm that fails (its daemon died, an I/O error, a timeout) is counted and
+**named** in `failed`, so `ran + failed == expected_per_system` for each system
+that mounted. A mounted system that lost an arm leaves a **partial receipt**, and
+the court **FAILs** — it never reports PASS over missing rows.
 
 ## How the two systems are mounted
 
@@ -104,6 +120,8 @@ and the merge, and stated in the receipt's `comparability` block:
    same coordinate.
 7. **No ranking.** The receipt carries no ordering, score, or winner. Read the
    comparability block before drawing any conclusion.
+8. **No silent holes.** Every expected arm must run; `comparability.arms` names
+   any that did not, and a partial receipt is a FAIL, not a PASS.
 
 If OrFS-Rust cannot be mounted the same way, the court runs it as best it allows
 (or skips its rows) and records the exact difference and the captured daemon
