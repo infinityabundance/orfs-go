@@ -60,6 +60,40 @@ type Index struct {
 	NextInodeID      uint64
 	CommittedRecords uint64
 	MaxTxID          uint64
+
+	// Journal, when non-nil, collects the namespace keys Apply touches. The
+	// writer installs it around a commit's suffix replay so it can republish its
+	// immutable read view by path-copying exactly what changed (internal/view).
+	// It is nil for reconstruction (open, checkpoint decode, fsck), where no view
+	// is being maintained.
+	Journal *Journal
+}
+
+// Journal is the set of namespace keys a committed suffix touched: the inode
+// ids to re-copy into the read view and the directory-entry keys to add, remove,
+// or move there. A commit installs one, replays its suffix, then folds it into
+// the published view as a single batch (so the new view reflects all of the
+// transaction or none of it).
+type Journal struct {
+	Inodes map[uint64]struct{}
+	Dentry map[DentryKey]struct{}
+}
+
+// NewJournal returns an empty change set.
+func NewJournal() *Journal {
+	return &Journal{Inodes: make(map[uint64]struct{}), Dentry: make(map[DentryKey]struct{})}
+}
+
+func (idx *Index) noteInode(id uint64) {
+	if idx.Journal != nil {
+		idx.Journal.Inodes[id] = struct{}{}
+	}
+}
+
+func (idx *Index) noteDentry(k DentryKey) {
+	if idx.Journal != nil {
+		idx.Journal.Dentry[k] = struct{}{}
+	}
 }
 
 // Checkpoint records an INDEX_CHECKPOINT summary.
@@ -138,11 +172,13 @@ func (idx *Index) create(in *Inode, offset uint64) {
 	if in.ID+1 > idx.NextInodeID {
 		idx.NextInodeID = in.ID + 1
 	}
+	idx.noteInode(in.ID)
 }
 
 func (idx *Index) bump(in *Inode, offset uint64) {
 	in.Version++
 	in.LatestRecordOffset = offset
+	idx.noteInode(in.ID)
 }
 
 // Apply replays one authoritative record into the index.
@@ -307,7 +343,9 @@ func (idx *Index) Apply(rec *record.Record, offset uint64) error {
 		if err != nil {
 			return err
 		}
-		idx.Dentry[DentryKey{Parent: v.Parent, Name: string(v.Name)}] = v.Child
+		key := DentryKey{Parent: v.Parent, Name: string(v.Name)}
+		idx.Dentry[key] = v.Child
+		idx.noteDentry(key)
 		if in, ok := idx.Inodes[v.Child]; ok {
 			idx.bump(in, offset)
 		}
@@ -318,7 +356,9 @@ func (idx *Index) Apply(rec *record.Record, offset uint64) error {
 		if err != nil {
 			return err
 		}
-		idx.Dentry[DentryKey{Parent: v.Parent, Name: string(v.Name)}] = v.Child
+		key := DentryKey{Parent: v.Parent, Name: string(v.Name)}
+		idx.Dentry[key] = v.Child
+		idx.noteDentry(key)
 		if in, ok := idx.Inodes[v.Child]; ok {
 			idx.bump(in, offset)
 		}
@@ -329,8 +369,10 @@ func (idx *Index) Apply(rec *record.Record, offset uint64) error {
 		if err != nil {
 			return err
 		}
-		if child, ok := idx.Dentry[DentryKey{Parent: v.Parent, Name: string(v.Name)}]; ok {
-			delete(idx.Dentry, DentryKey{Parent: v.Parent, Name: string(v.Name)})
+		key := DentryKey{Parent: v.Parent, Name: string(v.Name)}
+		if child, ok := idx.Dentry[key]; ok {
+			delete(idx.Dentry, key)
+			idx.noteDentry(key)
 			if in, ok := idx.Inodes[child]; ok {
 				idx.bump(in, offset)
 			}
@@ -342,8 +384,10 @@ func (idx *Index) Apply(rec *record.Record, offset uint64) error {
 		if err != nil {
 			return err
 		}
-		if child, ok := idx.Dentry[DentryKey{Parent: v.Parent, Name: string(v.Name)}]; ok {
-			delete(idx.Dentry, DentryKey{Parent: v.Parent, Name: string(v.Name)})
+		key := DentryKey{Parent: v.Parent, Name: string(v.Name)}
+		if child, ok := idx.Dentry[key]; ok {
+			delete(idx.Dentry, key)
+			idx.noteDentry(key)
 			if in, ok := idx.Inodes[child]; ok {
 				idx.bump(in, offset)
 			}
@@ -368,12 +412,16 @@ func (idx *Index) Apply(rec *record.Record, offset uint64) error {
 			}
 			idx.Dentry[oldKey] = other
 			idx.Dentry[newKey] = child
+			idx.noteDentry(oldKey)
+			idx.noteDentry(newKey)
 			if in, ok := idx.Inodes[other]; ok {
 				idx.bump(in, offset)
 			}
 		} else {
 			delete(idx.Dentry, oldKey)
 			idx.Dentry[newKey] = child
+			idx.noteDentry(oldKey)
+			idx.noteDentry(newKey)
 		}
 		if in, ok := idx.Inodes[child]; ok {
 			idx.bump(in, offset)

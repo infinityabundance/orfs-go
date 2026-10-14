@@ -427,27 +427,31 @@ sh scripts/container-gc-scaling.sh
 
 Receipt: `evidence/performance/gc-scaling.json` (schema
 `orfs.performance.gc-scaling.v1`). Measured (this host, container, 9-arm
-**bounded** spread, ~5 s per arm, one run, 2 GiB / 4 CPU):
+**bounded** spread, ~5 s per arm, one run, 2 GiB / 4 CPU), **after** the global
+read lock was removed ([`CONCURRENCY.md`](CONCURRENCY.md)):
 
 | GOGC | GOMEMLIMIT | p50 | p99 | p99.9 | kIOPS | gcN | gcp99 | RSS MiB | mutex s |
 | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 400 | off | 51.0 µs | 14.9 ms | 38.3 ms | 139.4 | 1046 | 57 µs | 30.2 | 110.9 |
-| 100 | off | 71.4 µs | 9.3 ms | 21.8 ms | 130.3 | 6510 | 65 µs | 17.0 | 135.7 |
-| 50 | off | 142.4 µs | 9.9 ms | 25.4 ms | 77.3 | 8501 | 328 µs | 12.9 | 156.1 |
-| 20 | off | 210.7 µs | 4.6 ms | 14.8 ms | 95.3 | 13007 | 65 µs | 13.9 | 159.6 |
-| 100 | 256MiB | 70.1 µs | 9.2 ms | 20.6 ms | 134.2 | 6603 | 65 µs | 18.7 | 132.2 |
-| 100 | 512MiB | 71.3 µs | 9.6 ms | 21.3 ms | 130.6 | 6464 | 57 µs | 15.1 | 133.6 |
-| off | 256MiB | 78.1 µs | 20.8 ms | 64.2 ms | 104.1 | 51 | 65 µs | **248.3** | 95.8 |
-| off | 512MiB | 84.3 µs | 21.4 ms | **73.6 ms** | 98.2 | 23 | 49 µs | **496.1** | 87.9 |
+| 400 | off | 30.8 µs | 0.4 ms | 45.1 ms | 333.1 | 1287 | 65 µs | 26.3 | 93.1 |
+| 100 | off | 43.2 µs | 9.6 ms | 21.4 ms | 287.7 | 7820 | 65 µs | 17.4 | 55.5 |
+| 50 | off | 288.3 µs | 1.7 ms | **3.9 ms** | 216.0 | 14291 | 65 µs | 15.6 | 24.6 |
+| 20 | off | 310.8 µs | 2.0 ms | 6.4 ms | 187.5 | 14081 | 82 µs | 15.2 | 16.0 |
+| 100 | 256MiB | 43.7 µs | 10.1 ms | 20.9 ms | 286.5 | 9874 | 65 µs | 15.6 | 55.9 |
+| 100 | 512MiB | 46.3 µs | 10.4 ms | 21.4 ms | 273.5 | 9430 | 65 µs | 15.9 | 61.9 |
+| off | 256MiB | 32.7 µs | 0.1 ms | 76.1 ms | 316.0 | 62 | 57 µs | **249.9** | 18.6 |
+| off | 512MiB | 33.4 µs | 0.2 ms | **78.2 ms** | 312.2 | 30 | 98 µs | **493.0** | 24.3 |
 | off | off | **daemon_died** | — | — | — | — | — | — | — |
 
-Stated plainly: **GC pauses are not the tail** (p99 pause ≤ 328 µs everywhere);
-the tail is the allocation rate (~2 GB/s) and a single shared `RWMutex` (88–160
-goroutine-seconds of lock wait over ~6 s — ~15–27 goroutines blocked on
-average), and `GOGC=off` with no memory limit is fatal (the daemon was
-OOM-killed ~1.3 s in). Lower `GOGC` buys tail at the cost of median; `GOMEMLIMIT`
-is inert until it binds. Full analysis and the GC-trace/lock-profile excerpts:
-[`RUNTIME.md`](RUNTIME.md).
+Stated plainly: **GC pauses are still not the tail** (p99 pause ≤ 98 µs everywhere);
+the tail is the allocation rate (~2–3 GB/s) and, where it remains, the residual
+reader-path `sync.Mutex`, not the namespace lock — which is gone. Removing the lock
+cut `/sync/mutex/wait` **1.5–10×** (2.4× at `GOGC=100`; same-session before/after in
+[`RUNTIME.md`](RUNTIME.md) §3c), raised reader throughput ~2.5×, and moved p99.9 at
+`GOGC=50` from 16.7 to **3.9 ms**; the `RWMutex` no longer appears in the mutex or
+block profile. `GOGC=off` with no memory limit is still fatal (the daemon is
+OOM-killed ~1.3 s in). Lower `GOGC` still buys tail at the cost of median;
+`GOMEMLIMIT` is inert until it binds. Full analysis, the before/after, and the
+GC-trace/lock-profile excerpts: [`RUNTIME.md`](RUNTIME.md).
 
 ## 8. The frontier: measured versus not yet measured
 
@@ -471,7 +475,8 @@ Measured today (all bounded, laboratory conditions):
 | group commit | 4.31× throughput / 4.49× better p50 vs a barrier per publish (bounded by the backing store's fsync cost) | `evidence/performance/groupcommit.json` |
 | per-read allocations | authoritative 4 KiB read: 2 -> 1 allocs/op (~470 ns/op); the returned `[]byte` is the only allocation | `evidence/performance/allocs.json` |
 | crash consistency (real `SIGKILL`) | 1000 kills mid-append: 379 abandoned tails (4 torn / 375 uncommitted), all quarantined (moved, never truncated); 0 truncations / 0 prefix mismatches / 0 recover failures; `verify --deep` clean | `evidence/crash.json` |
-| Go-runtime GC scaling | 9-arm GOGC×GOMEMLIMIT sweep under 64 readers + 8 writers: p99.9 14.8 ms (`GOGC=20`) … 73.6 ms (`GOGC=off`+512MiB); GC pauses ≤ 328 µs (not the tail); ~2 GB/s allocation; `GOGC=off`+no limit OOM-killed ~1.3 s in; lock wait dominant | `evidence/performance/gc-scaling.json` |
+| Go-runtime GC scaling | 9-arm GOGC×GOMEMLIMIT sweep under 64 readers + 8 writers: p99.9 3.9 ms (`GOGC=50`) … 78.2 ms (`GOGC=off`+512MiB); GC pauses ≤ 98 µs (not the tail); ~2–3 GB/s allocation; `GOGC=off`+no limit OOM-killed ~1.3 s in. **After** removing the global read lock: `/sync/mutex/wait` down 1.5–10× (2.4× at `GOGC=100`), reader throughput ~2.5×, and the `RWMutex` gone from the lock profiles | `evidence/performance/gc-scaling.json` |
+| lock-free read views | a commit publishes an immutable namespace view (path-copying treap + persistent dentry map) through an `atomic.Pointer`; readers traverse it with no lock. Same-session A/B at 64 readers / 8 writers: mutex wait 141.2→93.1 s (`GOGC=400`) … 162.3→16.0 s (`GOGC=20`); throughput 117→288 kIOPS (`GOGC=100`); p99.9 16.7→3.9 ms (`GOGC=50`); `RWMutex` absent from mutex/block profiles | `docs/CONCURRENCY.md`, `docs/RUNTIME.md` §3b/§3c |
 
 Explicitly not yet measured (absence is deliberate, not implied):
 

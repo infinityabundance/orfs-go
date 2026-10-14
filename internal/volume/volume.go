@@ -15,6 +15,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"github.com/infinityabundance/orfs-go/internal/capacity"
@@ -24,6 +25,7 @@ import (
 	"github.com/infinityabundance/orfs-go/internal/orfserr"
 	"github.com/infinityabundance/orfs-go/internal/record"
 	"github.com/infinityabundance/orfs-go/internal/segment"
+	"github.com/infinityabundance/orfs-go/internal/view"
 )
 
 // MetaName is the volume metadata file name.
@@ -86,6 +88,13 @@ type Volume struct {
 
 	reader *log.CanonicalReader
 	index  *index.Index
+
+	// readView is the immutable read view of the committed namespace, replaced
+	// atomically at each commit boundary (after the live index has been extended
+	// by the just-committed records). Readers load it once per request and never
+	// take a lock. Commits are serialised by the single writer, so publishing a
+	// new view is a plain atomic store.
+	readView atomic.Pointer[view.View]
 
 	// Checkpoint policy (opt-in) and the report of how the index was
 	// reconstructed at open.
@@ -196,6 +205,7 @@ func (v *Volume) buildIndex(publish bool) error {
 		return err
 	}
 	v.index = idx
+	v.readView.Store(view.FromIndex(idx))
 	v.mountReport = rep
 	v.lastCheckpointRoot = v.Log.CommittedRoot()
 	v.reader = log.NewCanonicalReader(log.Dir(v.Backing), v.Log.Extents())
@@ -204,6 +214,12 @@ func (v *Volume) buildIndex(publish bool) error {
 
 // Index returns the reconstructed namespace at the committed root.
 func (v *Volume) Index() *index.Index { return v.index }
+
+// View returns the current immutable read view of the committed namespace. It is
+// safe to call from any goroutine; the pointer is loaded atomically and the view
+// it names is frozen, so a reader needs no lock and never observes a partially
+// applied transaction.
+func (v *Volume) View() *view.View { return v.readView.Load() }
 
 // Compat reports whether this volume is in the Rust-reference compatibility
 // profile: writes stay inside the reference's registry and semantics.
@@ -247,7 +263,10 @@ func (v *Volume) Publish(data []*record.Record) (uint64, error) {
 
 // commit writes one transaction and replays only the newly committed suffix
 // [prevRoot, root) into the live index, so the work per commit is proportional
-// to the transaction, never to the retained history.
+// to the transaction, never to the retained history. The replay journals the
+// keys it touches and the resulting change set is folded into a new immutable
+// read view, which is published atomically once the whole transaction has been
+// applied — so a reader sees either the whole old view or the whole new one.
 func (v *Volume) commit(data []*record.Record) (uint64, error) {
 	prevRoot := v.Log.CommittedRoot()
 	root, err := v.Log.Publish(data)
@@ -256,9 +275,14 @@ func (v *Volume) commit(data []*record.Record) (uint64, error) {
 	}
 	extents := v.Log.Extents()
 	v.reader.UpdateExtents(extents)
-	if _, _, err := v.index.ReplayRange(log.Dir(v.Backing), extents, prevRoot, root); err != nil {
+	j := index.NewJournal()
+	v.index.Journal = j
+	_, _, err = v.index.ReplayRange(log.Dir(v.Backing), extents, prevRoot, root)
+	v.index.Journal = nil
+	if err != nil {
 		return 0, err
 	}
+	v.readView.Store(v.readView.Load().WithChanges(v.index, j.Inodes, j.Dentry))
 	return root, nil
 }
 

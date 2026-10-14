@@ -644,13 +644,12 @@ func (ns *Namespace) Removexattr(cred Credential, id uint64, name string) error 
 	return err
 }
 
-// Getxattr reads an extended attribute. Reading requires read permission.
+// Getxattr reads an extended attribute. Reading requires read permission, and
+// the inode is taken lock-free from the current immutable view.
 func (ns *Namespace) Getxattr(cred Credential, id uint64, name string) ([]byte, error) {
-	ns.mu.RLock()
-	defer ns.mu.RUnlock()
-	in, err := ns.getattr(id)
-	if err != nil {
-		return nil, err
+	in, ok := ns.vol.View().Inode(id)
+	if !ok {
+		return nil, orfserr.NotFound("inode %d does not exist", id)
 	}
 	if !HasPermission(cred, in, 0o4) {
 		return nil, orfserr.Access("read permission denied on inode %d", id)

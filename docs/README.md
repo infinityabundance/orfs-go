@@ -25,7 +25,8 @@ capability, it is backed by code and, where a behaviour is claimed, by a court i
 | --- | --- |
 | [`OPERATIONS.md`](OPERATIONS.md) | Growth monitoring (logical vs physical), the recovery runbook, mount latency, capacity transitions |
 | [`BENCH.md`](BENCH.md) | The benchmark frontier: every court, its receipt, and what is measured versus not yet measured |
-| [`RUNTIME.md`](RUNTIME.md) | What the Go runtime costs the daemon: the measured GC/lock/allocation tail across `GOGC`×`GOMEMLIMIT`, and when the port is operationally reasonable |
+| [`RUNTIME.md`](RUNTIME.md) | What the Go runtime costs the daemon: the measured GC/lock/allocation tail across `GOGC`×`GOMEMLIMIT`, the lock-free-read-view before/after, and when the port is operationally reasonable |
+| [`CONCURRENCY.md`](CONCURRENCY.md) | The concurrency model: lock-free immutable read views, the atomic publication at the commit boundary, the persistent-treap publication cost, and the invariants/proof obligations |
 | [`WORM.md`](WORM.md) | The append-only WORM audit-log-sink case study, the metrics surface, and how to scrape it |
 | [`TRANSPORT.md`](TRANSPORT.md) | F0/F1/F2, what this build serves, the measured F0 comparison, and why F2 is not reachable here |
 | [`MANIFESTATION.md`](MANIFESTATION.md) | The concealed-expansion read path: identity, certification, fallback, measured results |

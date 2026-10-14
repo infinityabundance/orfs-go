@@ -39,6 +39,13 @@ func (m *ExtentMap) Size() uint64 { return m.size }
 // Extents returns a copy of the extent list.
 func (m *ExtentMap) Extents() []Extent { return append([]Extent(nil), m.extents...) }
 
+// Clone returns an independent copy of the map. It is used to freeze a file's
+// extent list into an immutable read view without sharing the mutable backing
+// slice with the live writer.
+func (m *ExtentMap) Clone() *ExtentMap {
+	return &ExtentMap{extents: append([]Extent(nil), m.extents...), size: m.size}
+}
+
 // Write records that [offset, offset+len(data)) now reads the immutable bytes at
 // dataOffset, zero-filling any gap between the old end and offset.
 func (m *ExtentMap) Write(offset, dataOffset, length uint64) {

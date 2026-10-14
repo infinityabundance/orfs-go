@@ -2,11 +2,16 @@
 // log. Every mutation is expressed as new records in one atomic transaction and
 // published through the log; nothing here rewrites committed bytes.
 //
-// Concurrency: a single RWMutex guards the shared index. Readers take a read
-// lock; a mutation takes the write lock for the whole check-and-publish so a
-// read never observes a partially applied transaction. Public methods never call
-// other public methods (which would risk re-entrant locking); the internal
-// helpers assume the lock is already held.
+// Concurrency: reads are lock-free. The writer mutates the live index in place
+// under a write-side mutex and, once a transaction is committed, publishes a new
+// immutable read view through volume.Volume's atomic pointer. A reader loads the
+// current view once per request and traverses it with no lock, so concurrent
+// readers never contend with each other or with the writer. Because the view is
+// replaced only after the whole transaction has been applied, a read observes a
+// consistent committed state and never a partially applied one.
+//
+// Public methods never call other public methods (which would risk re-entrant
+// locking); the internal helpers assume the writer's lock is already held.
 package namespace
 
 import (
@@ -18,6 +23,7 @@ import (
 	"github.com/infinityabundance/orfs-go/internal/index"
 	"github.com/infinityabundance/orfs-go/internal/orfserr"
 	"github.com/infinityabundance/orfs-go/internal/record"
+	"github.com/infinityabundance/orfs-go/internal/view"
 	"github.com/infinityabundance/orfs-go/internal/volume"
 )
 
@@ -42,7 +48,9 @@ type Namespace struct {
 
 	manifest ManifestSource
 
-	mu sync.RWMutex
+	// mu serialises mutations (single writer). Reads do not take it: they read
+	// the volume's published immutable view instead.
+	mu sync.Mutex
 }
 
 // New builds a namespace over a volume.
@@ -71,6 +79,7 @@ func (ns *Namespace) ctimeRec(id uint64, tm record.Timespec) []*record.Record {
 // SetManifestSource installs the concealed read seam. A nil source disables it.
 func (ns *Namespace) SetManifestSource(src ManifestSource) { ns.manifest = src }
 
+// idx returns the writer's live, mutable index. Callers must hold ns.mu.
 func (ns *Namespace) idx() *index.Index { return ns.vol.Index() }
 
 // realNow returns the current time, or a fixed timestamp when ORFS_CLOCK_EPOCH
@@ -93,12 +102,27 @@ func mkRec(t uint16, inodeID uint64, payload []byte) *record.Record {
 	}
 }
 
-// dir loads an inode and asserts it is a directory, checking search permission.
+// dir loads an inode from the writer's live index and asserts it is a directory,
+// checking search permission. It is a writer-side helper; callers hold ns.mu.
 func (ns *Namespace) dir(cred Credential, id uint64, wantWrite bool) (*index.Inode, error) {
 	in, ok := ns.idx().Inode(id)
 	if !ok {
 		return nil, orfserr.NotFound("inode %d does not exist", id)
 	}
+	return checkDir(cred, id, in, wantWrite)
+}
+
+// viewDir is dir against an immutable read view. It is lock-free: the view and
+// its inodes are frozen, so any goroutine may call it.
+func viewDir(v *view.View, cred Credential, id uint64, wantWrite bool) (*index.Inode, error) {
+	in, ok := v.Inode(id)
+	if !ok {
+		return nil, orfserr.NotFound("inode %d does not exist", id)
+	}
+	return checkDir(cred, id, in, wantWrite)
+}
+
+func checkDir(cred Credential, id uint64, in *index.Inode, wantWrite bool) (*index.Inode, error) {
 	if in.Kind != record.KindDir {
 		return nil, orfserr.NotDir("inode %d is not a directory", id)
 	}
@@ -112,7 +136,8 @@ func (ns *Namespace) dir(cred Credential, id uint64, wantWrite bool) (*index.Ino
 	return in, nil
 }
 
-// getattr is the unlocked inode lookup.
+// getattr is the unlocked inode lookup against the writer's live index. Callers
+// hold ns.mu.
 func (ns *Namespace) getattr(id uint64) (*index.Inode, error) {
 	in, ok := ns.idx().Inode(id)
 	if !ok {
@@ -121,11 +146,13 @@ func (ns *Namespace) getattr(id uint64) (*index.Inode, error) {
 	return in, nil
 }
 
-// Getattr returns an inode.
+// Getattr returns an inode from the current immutable read view.
 func (ns *Namespace) Getattr(id uint64) (*index.Inode, error) {
-	ns.mu.RLock()
-	defer ns.mu.RUnlock()
-	return ns.getattr(id)
+	in, ok := ns.vol.View().Inode(id)
+	if !ok {
+		return nil, orfserr.NotFound("inode %d does not exist", id)
+	}
+	return in, nil
 }
 
 // checkNameLen rejects a path component longer than NAME_MAX with the
@@ -139,28 +166,25 @@ func checkNameLen(name string) error {
 	return nil
 }
 
-// Lookup resolves a name within a directory.
+// Lookup resolves a name within a directory from the current read view.
 func (ns *Namespace) Lookup(cred Credential, parent uint64, name string) (*index.Inode, error) {
-	ns.mu.RLock()
-	defer ns.mu.RUnlock()
 	if err := checkNameLen(name); err != nil {
 		return nil, err
 	}
-	if _, err := ns.dir(cred, parent, false); err != nil {
+	v := ns.vol.View()
+	if _, err := viewDir(v, cred, parent, false); err != nil {
 		return nil, err
 	}
-	in, ok := ns.idx().Lookup(parent, name)
+	in, ok := v.Lookup(parent, name)
 	if !ok {
 		return nil, orfserr.NotFound("no entry %q in %d", name, parent)
 	}
 	return in, nil
 }
 
-// ParentOf returns a node's parent directory id.
+// ParentOf returns a node's parent directory id from the current read view.
 func (ns *Namespace) ParentOf(id uint64) (uint64, bool) {
-	ns.mu.RLock()
-	defer ns.mu.RUnlock()
-	return ns.idx().ParentOf(id)
+	return ns.vol.View().ParentOf(id)
 }
 
 // Readdir lists a directory's members.
@@ -177,17 +201,18 @@ type DirEntryInfo struct {
 	IsDir bool
 }
 
-// ReaddirFull lists a directory resolved to entries plus the parent id.
+// ReaddirFull lists a directory resolved to entries plus the parent id. The
+// whole listing is answered from one loaded view, so the entries and their inodes
+// are mutually consistent even while a writer commits.
 func (ns *Namespace) ReaddirFull(cred Credential, id uint64) ([]DirEntryInfo, []index.DirEntry, uint64, error) {
-	ns.mu.RLock()
-	defer ns.mu.RUnlock()
-	if _, err := ns.dir(cred, id, false); err != nil {
+	v := ns.vol.View()
+	if _, err := viewDir(v, cred, id, false); err != nil {
 		return nil, nil, 0, err
 	}
-	children := ns.idx().Children(id)
+	children := v.Children(id)
 	infos := make([]DirEntryInfo, 0, len(children))
 	for _, e := range children {
-		in, ok := ns.idx().Inode(e.Child)
+		in, ok := v.Inode(e.Child)
 		if !ok {
 			continue
 		}
@@ -198,7 +223,7 @@ func (ns *Namespace) ReaddirFull(cred Credential, id uint64) ([]DirEntryInfo, []
 			IsDir: in.Kind == record.KindDir,
 		})
 	}
-	parent, _ := ns.idx().ParentOf(id)
+	parent, _ := v.ParentOf(id)
 	if parent == 0 {
 		parent = id
 	}
@@ -207,43 +232,42 @@ func (ns *Namespace) ReaddirFull(cred Credential, id uint64) ([]DirEntryInfo, []
 
 // Read reads a file's bytes. When a manifested body is certified for the exact
 // (inode, version, committed root), it is served from there; otherwise the read
-// is served from authority. Both paths yield identical bytes.
+// is served from authority. Both paths yield identical bytes. The inode is taken
+// from the current immutable view, so no lock is held.
 func (ns *Namespace) Read(cred Credential, id, offset, size uint64) ([]byte, error) {
-	ns.mu.RLock()
-	in, err := ns.getattr(id)
-	if err != nil {
-		ns.mu.RUnlock()
-		return nil, err
+	v := ns.vol.View()
+	in, ok := v.Inode(id)
+	if !ok {
+		return nil, orfserr.NotFound("inode %d does not exist", id)
 	}
 	if !HasPermission(cred, in, 0o4) {
-		ns.mu.RUnlock()
 		return nil, orfserr.Access("read permission denied on inode %d", id)
 	}
 	if in.Kind != record.KindFile {
-		ns.mu.RUnlock()
 		return nil, orfserr.IsDir("inode %d is not a regular file", id)
 	}
 	version := in.Version
 	src := ns.manifest
-	root := ns.vol.Log.CommittedRoot()
-	ns.mu.RUnlock()
+	// The committed root is taken from the same view as the inode, so the
+	// manifested-identity key is internally consistent, and the read never touches
+	// the writer's live log state.
+	root := v.Root()
 
 	if src != nil {
 		if b, ok := src.ManifestedRead(id, version, root, offset, size); ok {
 			return b, nil
 		}
 	}
-	return ns.ReadAuthoritative(cred, id, offset, size)
+	return ns.readUnchecked(in, offset, size)
 }
 
 // ReadAuthoritative reads a file's bytes from authority, never consulting the
-// manifested plane. It is the oracle a manifested body must agree with.
+// manifested plane. It is the oracle a manifested body must agree with, served
+// lock-free from the current immutable view.
 func (ns *Namespace) ReadAuthoritative(cred Credential, id, offset, size uint64) ([]byte, error) {
-	ns.mu.RLock()
-	defer ns.mu.RUnlock()
-	in, err := ns.getattr(id)
-	if err != nil {
-		return nil, err
+	in, ok := ns.vol.View().Inode(id)
+	if !ok {
+		return nil, orfserr.NotFound("inode %d does not exist", id)
 	}
 	if !HasPermission(cred, in, 0o4) {
 		return nil, orfserr.Access("read permission denied on inode %d", id)
@@ -251,10 +275,9 @@ func (ns *Namespace) ReadAuthoritative(cred Credential, id, offset, size uint64)
 	return ns.readUnchecked(in, offset, size)
 }
 
-// ReadUnchecked reads without a permission check, under the read lock.
+// ReadUnchecked reads without a permission check. in must come from a published
+// read view; the inode is immutable, so no lock is taken.
 func (ns *Namespace) ReadUnchecked(in *index.Inode, offset, size uint64) ([]byte, error) {
-	ns.mu.RLock()
-	defer ns.mu.RUnlock()
 	return ns.readUnchecked(in, offset, size)
 }
 
@@ -287,13 +310,12 @@ func (ns *Namespace) readUnchecked(in *index.Inode, offset, size uint64) ([]byte
 	return out, nil
 }
 
-// ReadAll reads a file's entire content (used to build a manifested body).
+// ReadAll reads a file's entire content (used to build a manifested body), from
+// the current read view.
 func (ns *Namespace) ReadAll(cred Credential, id uint64) ([]byte, error) {
-	ns.mu.RLock()
-	defer ns.mu.RUnlock()
-	in, err := ns.getattr(id)
-	if err != nil {
-		return nil, err
+	in, ok := ns.vol.View().Inode(id)
+	if !ok {
+		return nil, orfserr.NotFound("inode %d does not exist", id)
 	}
 	if !HasPermission(cred, in, 0o4) {
 		return nil, orfserr.Access("read permission denied on inode %d", id)
@@ -301,13 +323,11 @@ func (ns *Namespace) ReadAll(cred Credential, id uint64) ([]byte, error) {
 	return ns.readUnchecked(in, 0, in.Size)
 }
 
-// Readlink returns a symlink's target under the read lock.
+// Readlink returns a symlink's target from the current read view.
 func (ns *Namespace) Readlink(id uint64) ([]byte, error) {
-	ns.mu.RLock()
-	defer ns.mu.RUnlock()
-	in, err := ns.getattr(id)
-	if err != nil {
-		return nil, err
+	in, ok := ns.vol.View().Inode(id)
+	if !ok {
+		return nil, orfserr.NotFound("inode %d does not exist", id)
 	}
 	if in.Kind != record.KindSymlink {
 		return nil, orfserr.Invalid("inode %d is not a symbolic link", id)
@@ -315,13 +335,12 @@ func (ns *Namespace) Readlink(id uint64) ([]byte, error) {
 	return append([]byte(nil), in.Target...), nil
 }
 
-// Listxattr returns an inode's extended-attribute names under the read lock.
+// Listxattr returns an inode's extended-attribute names from the current read
+// view.
 func (ns *Namespace) Listxattr(cred Credential, id uint64) ([]string, error) {
-	ns.mu.RLock()
-	defer ns.mu.RUnlock()
-	in, err := ns.getattr(id)
-	if err != nil {
-		return nil, err
+	in, ok := ns.vol.View().Inode(id)
+	if !ok {
+		return nil, orfserr.NotFound("inode %d does not exist", id)
 	}
 	if !HasPermission(cred, in, 0o4) {
 		return nil, orfserr.Access("read permission denied on inode %d", id)
@@ -333,7 +352,8 @@ func (ns *Namespace) Listxattr(cred Credential, id uint64) ([]string, error) {
 	return names, nil
 }
 
-// namesOf counts the directory entries naming an inode.
+// namesOf counts the directory entries naming an inode. It reads the writer's
+// live index; callers hold ns.mu.
 func (ns *Namespace) namesOf(child uint64) int {
 	n := 0
 	for _, e := range ns.idx().Dentry {
