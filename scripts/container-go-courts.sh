@@ -1,7 +1,7 @@
 #!/bin/sh
 # Run the in-Go courts with ORFS_EVIDENCE=1 so their receipts are written into
-# the repository: evidence/performance/{amplification,cache,groupcommit}.json and
-# evidence/recovery/{capacity,quarantine}.json.
+# the repository: evidence/performance/{amplification,cache,groupcommit,allocs}.json
+# and evidence/recovery/{capacity,quarantine}.json.
 set -eu
 . "$(dirname "$0")/lib.sh"
 
@@ -20,4 +20,9 @@ docker_run env ORFS_EVIDENCE=1 sh -c \
 # overlay/ext4, where fsync has real cost.
 docker_run env ORFS_EVIDENCE=1 sh -c \
   'go test ./internal/log/ -run TestGroupCommitCourt -count=1'
+# Per-read allocation court: the steady-state authoritative 4 KiB read path over
+# a 1 MiB file, asserting the destination []byte is the only per-read allocation.
+# Writes evidence/performance/allocs.json (schema orfs.performance.allocs.v1).
+docker_run env ORFS_EVIDENCE=1 sh -c \
+  'go test ./internal/namespace/ -run TestAuthoritativeReadAllocs -count=1'
 echo "container-go-courts: PASS — receipts in evidence/performance/ and evidence/recovery/"

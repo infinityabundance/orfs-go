@@ -39,7 +39,7 @@ its owning phase rather than pretending to work.
 | 29 | Capacity `CapacityExhausted` + quarantine-never-truncates courts + receipts | complete |
 | 30 | Multi-arch publish workflow + tagged release | complete |
 | 31 | Scan-resistant admission court (S3-FIFO vs FIFO vs LRU) | complete |
-| 32 | A raw pure-Go F2 transport (blocked: no Go FUSE library exposes io_uring — see phase 24); per-read allocs court | planned |
+| 32 | A raw pure-Go F2 transport (blocked: no Go FUSE library exposes io_uring — see phase 24); per-read allocs court | F2 blocked (phase 24); allocs court complete — authoritative 4 KiB read 2 -> 1 allocs/op (`PlanReadInto`, destination `[]byte` is the only allocation) |
 | 33 | Cross-FS determinism (identical authoritative log bytes across ext4/xfs/btrfs/tmpfs, fixed uuid + pinned clock) | complete |
 | 34 | pjdfstest court (upstream POSIX syscall suite vs the mount; deviations published, not allowlisted) | complete — 8798/8798 assertions pass, 0 deviations |
 | 35 | Group commit: an opt-in `Log` coordinator coalescing concurrent publishes behind one durability barrier (own root + contiguous sequence numbers per transaction; all-or-nothing on a failed fsync), with correctness courts and an OFF-vs-ON receipt | complete — 4.31× throughput, 4.49× better p50 on the container backing |

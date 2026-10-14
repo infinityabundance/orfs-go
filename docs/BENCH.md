@@ -331,6 +331,35 @@ tracks the backing store's `fsync` cost — on a backing with millisecond `fsync
 it would approach the batch factor, and on `tmpfs`, where `fsync` is nearly free,
 it would be small or absent. Stated plainly rather than inflated.
 
+## 7e. Per-read allocation court
+
+Court: `internal/namespace` (`TestAuthoritativeReadAllocs`, benchmark
+`BenchmarkAuthoritativeRead4K`), run inside the court container by
+`scripts/container-go-courts.sh` with `ORFS_EVIDENCE=1`.
+
+Measures the steady-state **authoritative** read path (no manifest registered) —
+`Namespace.Read` / `readUnchecked` — over a 1 MiB single-extent file on a
+filesystem-backed volume, readers walked across the whole file. The destination
+`[]byte` a `Read` returns is one unavoidable allocation; the court asserts it is
+the **only** per-read allocation, so a change that reintroduces a per-read
+planner allocation fails the court.
+
+Measured (this host, unoptimised test build): **before 2 allocs/op** (the
+destination plus the fresh `[]Piece` that `PlanRead` allocated — 4120 B/op) ->
+**after 1 alloc/op** (the destination alone — 4096 B/op) at **~470 ns/op** for a
+4 KiB read. The change is surgical: `ExtentMap.PlanReadInto` fills a
+caller-owned slice and `readUnchecked` passes a small fixed-size array, so the
+common single-extent read allocates nothing for the plan. The reference reached
+2 allocs/read; this reaches 1.
+
+Run:
+
+```sh
+sh scripts/container-go-courts.sh   # writes evidence/performance/allocs.json
+```
+
+Receipt: `evidence/performance/allocs.json` (schema `orfs.performance.allocs.v1`).
+
 ## 8. The frontier: measured versus not yet measured
 
 Measured today (all bounded, laboratory conditions):
@@ -351,6 +380,7 @@ Measured today (all bounded, laboratory conditions):
 | cross-FS determinism | identical segment sha256 across ext4/xfs/btrfs/tmpfs | `evidence/correctness/cross-fs.json` |
 | pjdfstest conformance | 8798/8798 assertions pass; 0 deviations | `evidence/performance/pjdfstest.json` |
 | group commit | 4.31× throughput / 4.49× better p50 vs a barrier per publish (bounded by the backing store's fsync cost) | `evidence/performance/groupcommit.json` |
+| per-read allocations | authoritative 4 KiB read: 2 -> 1 allocs/op (~470 ns/op); the returned `[]byte` is the only allocation | `evidence/performance/allocs.json` |
 
 Explicitly not yet measured (absence is deliberate, not implied):
 

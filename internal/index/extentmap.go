@@ -149,14 +149,23 @@ type Piece struct {
 // PlanRead resolves [offset, offset+length) into ordered pieces, clipped to the
 // file size. A read beyond EOF yields no piece for that range.
 func (m *ExtentMap) PlanRead(offset, length uint64) []Piece {
+	return m.PlanReadInto(offset, length, nil)
+}
+
+// PlanReadInto is PlanRead into a caller-provided destination slice. The result
+// is appended to dst[:0], so a caller that passes a small fixed-size array (its
+// backing array on the stack) pays no heap allocation for the common, mostly
+// single-extent read. If dst lacks capacity for every piece, append grows it
+// and returns the new slice; the caller must use the returned slice.
+func (m *ExtentMap) PlanReadInto(offset, length uint64, dst []Piece) []Piece {
 	if length == 0 || offset >= m.size {
-		return nil
+		return dst[:0]
 	}
 	end := offset + length
 	if end > m.size {
 		end = m.size
 	}
-	var pieces []Piece
+	dst = dst[:0]
 	for _, e := range m.extents {
 		if e.End() <= offset || e.Start >= end {
 			continue
@@ -167,9 +176,9 @@ func (m *ExtentMap) PlanRead(offset, length uint64) []Piece {
 		if e.Kind == ExtentData {
 			p.DataOffset = e.DataOffset + (lo - e.Start)
 		}
-		pieces = append(pieces, p)
+		dst = append(dst, p)
 	}
-	return pieces
+	return dst
 }
 
 func sortExtents(in []Extent) []Extent {

@@ -248,7 +248,10 @@ func (ns *Namespace) readUnchecked(in *index.Inode, offset, size uint64) ([]byte
 		want = in.Size - offset
 	}
 	out := make([]byte, want)
-	pieces := in.Extents.PlanRead(offset, want)
+	// The common read lands in a single contiguous extent; a small caller-owned
+	// array keeps plan resolution from allocating a fresh []Piece every read.
+	var plan [4]index.Piece
+	pieces := in.Extents.PlanReadInto(offset, want, plan[:0])
 	var at uint64
 	for _, p := range pieces {
 		dst := out[at : at+p.Length]
