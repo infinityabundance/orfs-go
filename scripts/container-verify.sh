@@ -70,6 +70,8 @@ else
         sh "$(dirname "$0")/container-auditsink.sh"
       run_stage "cross-language (Rust reference <-> Go: fixtures, mounts, handoffs, recovery)" \
         sh "$(dirname "$0")/container-crosslang.sh"
+      run_stage "oss-compare (mounted OrFS-GO vs OrFS-Rust: append+fsync and read)" \
+        sh "$(dirname "$0")/container-oss-compare.sh"
     else
       skip "fuse (mounted POSIX court)" "no /dev/fuse"
       skip "fsstress (bounded op storm + POSIX extras)" "no /dev/fuse"
@@ -81,6 +83,7 @@ else
       skip "worm (append-only WORM case study)" "no /dev/fuse"
       skip "audit-sink (JSON audit-log sink: inotify tail, immutability, scrape)" "no /dev/fuse"
       skip "cross-language (Rust reference <-> Go: fixtures, mounts, handoffs, recovery)" "no /dev/fuse"
+      skip "oss-compare (mounted OrFS-GO vs OrFS-Rust: append+fsync and read)" "no /dev/fuse"
     fi
   else
     skip "race (concurrent immutable reads)" "--fast"
@@ -96,6 +99,7 @@ else
     skip "worm (append-only WORM case study)" "--fast"
     skip "audit-sink (JSON audit-log sink: inotify tail, immutability, scrape)" "--fast"
     skip "cross-language (Rust reference <-> Go: fixtures, mounts, handoffs, recovery)" "--fast"
+    skip "oss-compare (mounted OrFS-GO vs OrFS-Rust: append+fsync and read)" "--fast"
   fi
 fi
 

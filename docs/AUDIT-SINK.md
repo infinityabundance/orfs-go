@@ -13,6 +13,13 @@ Receipt: [`../evidence/audit-sink.json`](../evidence/audit-sink.json) (schema
 Driver: `cmd/orfsaudit`. Dashboard:
 [`../courts/auditsink/dashboard.json`](../courts/auditsink/dashboard.json).
 
+**This is the durable-append number.** Every event here is a real fixed-length
+client write followed by an `fsync`, so the throughput and latency below describe
+*durable 4 KiB-class appends* — not the zero-byte batched-publish figure in
+[`../evidence/performance/groupcommit.json`](../evidence/performance/groupcommit.json)
+(see [`BENCH.md`](BENCH.md) §7d). For the mounted head-to-head against OrFS-Rust
+under the same driver and equal durability, see [`BENCH.md`](BENCH.md) §7i.
+
 ## 1. The workload
 
 A single sequential writer appends **structured JSON audit events** to a mounted

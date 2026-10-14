@@ -44,6 +44,7 @@ capability, it is backed by code and, where a behaviour is claimed, by a court i
 | `../evidence/` | Machine-readable output written by the container courts |
 | [`grafana/orfs-worm-dashboard.json`](grafana/orfs-worm-dashboard.json) | A minimal Grafana dashboard over the `orfs metrics` exposition |
 | [`../courts/auditsink/dashboard.json`](../courts/auditsink/dashboard.json) | The 5-panel audit-sink Grafana dashboard (bytes+amplification, barrier p50/p99, batch size, breach/quarantine rate, verify failures) |
+| [`../courts/oss-compare/README.md`](../courts/oss-compare/README.md) | The open-source storage head-to-head court (step 1, OrFS-GO vs OrFS-Rust): the shared deterministic driver and the comparability rules |
 
 ## The one rule
 

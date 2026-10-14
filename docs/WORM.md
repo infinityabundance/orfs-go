@@ -11,6 +11,13 @@ Receipt: [`../evidence/worm-case-study.json`](../evidence/worm-case-study.json)
 [`../scripts/worm-court.sh`](../scripts/worm-court.sh) (driven by
 [`../scripts/container-worm.sh`](../scripts/container-worm.sh)).
 
+**This is the durable-append number.** Every append here is a real 4 KiB client
+write followed by an `fsync`, so the throughput and latency below describe
+*durable 4 KiB appends* — not the zero-byte batched-publish figure in
+[`../evidence/performance/groupcommit.json`](../evidence/performance/groupcommit.json)
+(see [`BENCH.md`](BENCH.md) §7d). For the mounted head-to-head against OrFS-Rust
+under the same driver and equal durability, see [`BENCH.md`](BENCH.md) §7i.
+
 **Production story:** for mounting OrFS at `/var/log/audit` and driving it as a
 real audit-log sink (systemd-journald / Kubernetes audit), with a JSON-event
 workload, an inotify tail reader, a mounted immutability proof, and a Grafana
