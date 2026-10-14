@@ -32,6 +32,7 @@ type MountOptions struct {
 	AllowOther         bool
 	ReadOnly           bool
 	DefaultPermissions bool
+	DirectIO           bool
 	AttrTTLSeconds     float64
 	EntryTTLSeconds    float64
 	FsName             string
@@ -279,8 +280,14 @@ func (n *node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 func (n *node) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	// Read/write permission is enforced per-operation from the credential. We do
 	// not set FOPEN_KEEP_CACHE: a short attribute/entry TTL already bounds reuse,
-	// and a cached page could otherwise outlive a concurrent overwrite.
-	return nil, 0, 0
+	// and a cached page could otherwise outlive a concurrent overwrite. When
+	// requested, FOPEN_DIRECT_IO bypasses the page cache so a benchmark reads the
+	// daemon, not the cache.
+	var fuseFlags uint32
+	if n.s.opt.DirectIO {
+		fuseFlags |= fuse.FOPEN_DIRECT_IO
+	}
+	return nil, fuseFlags, 0
 }
 
 func (n *node) Read(ctx context.Context, f fs.FileHandle, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {

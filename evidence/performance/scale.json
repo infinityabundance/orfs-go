@@ -1,0 +1,42 @@
+{
+  "schema": "orfs.performance.scale.v1",
+  "note": "honest external comparison; a FUSE tax is expected and is not hidden",
+  "targets": {
+    "ext4": [
+      {
+        "job": "randread",
+        "iops": 11327139.915127,
+        "bw_kib_per_s": 45308559,
+        "clat_mean_ns": 4090.860728,
+        "p50_ns": 422,
+        "p99_ns": 1336,
+        "p99_9_ns": 2512,
+        "p99_99_ns": 6455296
+      }
+    ],
+    "orfs": [
+      {
+        "job": "randread",
+        "iops": 472023.943135,
+        "bw_kib_per_s": 1888095,
+        "clat_mean_ns": 134913.745557,
+        "p50_ns": 95744,
+        "p99_ns": 593920,
+        "p99_9_ns": 1810432,
+        "p99_99_ns": 3424256
+      }
+    ],
+    "tmpfs": [
+      {
+        "job": "randread",
+        "iops": 14576467.67349,
+        "bw_kib_per_s": 58305870,
+        "clat_mean_ns": 2926.214092,
+        "p50_ns": 270,
+        "p99_ns": 1096,
+        "p99_9_ns": 2008,
+        "p99_99_ns": 5537792
+      }
+    ]
+  }
+}

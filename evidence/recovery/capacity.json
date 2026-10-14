@@ -1,0 +1,9 @@
+{
+  "bytes_unchanged": true,
+  "errno": "ENOSPC",
+  "latched_read_only": true,
+  "refusal": "CapacityExhausted",
+  "reserve_breached": true,
+  "root_unchanged": true,
+  "schema": "orfs.recovery.capacity.v1"
+}

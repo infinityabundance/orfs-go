@@ -47,3 +47,31 @@ docker_run_fuse() {
 
 have_docker() { command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; }
 have_fuse()   { [ -e /dev/fuse ]; }
+
+# The court image: the Dockerfile's `court` target (Go toolchain + fio + FUSE
+# userspace), used by the executable baseline and fsstress courts.
+COURT_IMAGE=${ORFS_COURT_IMAGE:-orfs-go-court:local}
+
+# build_court_image builds the pinned court image. --platform keeps the run
+# deterministic across hosts (a non-amd64 host needs QEMU/binfmt registered).
+build_court_image() {
+  docker build --platform linux/amd64 --target court -t "${COURT_IMAGE}" "${REPO_ROOT}"
+}
+
+# docker_run_court runs the court image as root with /dev/fuse and CAP_SYS_ADMIN
+# so the mounted courts work, bind-mounting the repository's evidence/ directory
+# so receipts persist on the host. It does not use exec so one script can drive
+# several courts sequentially.
+docker_run_court() {
+  mkdir -p "${REPO_ROOT}/evidence"
+  docker run --rm \
+    --platform linux/amd64 \
+    --network host \
+    --memory "${MEM_LIMIT}" --memory-swap "${MEMSWAP_LIMIT}" --cpus "${CPUS}" \
+    --device /dev/fuse --cap-add SYS_ADMIN \
+    --security-opt apparmor=unconfined --security-opt seccomp=unconfined \
+    -e HOME=/tmp \
+    -v "${REPO_ROOT}/evidence":/evidence \
+    -w /src \
+    "${COURT_IMAGE}" "$@"
+}

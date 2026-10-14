@@ -1,0 +1,26 @@
+{
+  "schema": "orfs.performance.fsstress.v1",
+  "dir": "/tmp/tmp.uIbR4clPCo/mnt",
+  "workers": 8,
+  "duration_seconds": 15,
+  "ops": {
+    "chmod": 591,
+    "create": 646,
+    "link": 626,
+    "mkdir": 629,
+    "read": 567,
+    "rename": 628,
+    "rmdir": 601,
+    "symlink": 633,
+    "truncate": 627,
+    "unlink": 612,
+    "write": 655,
+    "xattr": 658
+  },
+  "errors": {
+    "EEXIST": 607,
+    "ENOENT": 2900
+  },
+  "total_ops": 7473,
+  "total_errors": 3507
+}

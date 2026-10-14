@@ -44,7 +44,8 @@ Working today:
 | Simulated power-loss device + crash-consistency court | implemented |
 | Frozen `legacy_v0` / `current_v1` fixtures + byte-identity court | implemented |
 | `orfs init` / `inspect` / `verify [--deep]` / `recover` / `doctor` / `mount` / `manifest` / `stat` | implemented |
-| F2 transport, external baselines, amplification curve, 64-thread scaling | planned — see `docs/PROGRESS.md` |
+| Growth/amplification, external `fio` baseline, 64-thread scaling, fsstress, capacity/quarantine courts | implemented — receipts under `evidence/`, honest numbers in `docs/BENCH.md` |
+| F2 transport, cross-FS determinism, group commit, S3-FIFO admission | planned — see `docs/PROGRESS.md` |
 
 Honest non-claims: the **image pixel-surface pyramid is rejected, not merely
 unimplemented** (`docs/REJECTED.md`). No performance superiority is claimed; the
@@ -66,7 +67,9 @@ umount /mnt/orfs
 
 ## Documentation
 
-See [`docs/README.md`](docs/README.md) for the full map. Highlights:
+See [`docs/README.md`](docs/README.md) for the full map. Benchmarks and their
+receipts are in [`docs/BENCH.md`](docs/BENCH.md); reproduction in
+[`docs/REPRO.md`](docs/REPRO.md). Highlights:
 [`ORFS-SPEC.md`](docs/ORFS-SPEC.md) (the laws and planes),
 [`ON_DISK.md`](docs/ON_DISK.md) (byte-exact format),
 [`MIGRATION.md`](docs/MIGRATION.md) (`or.log` v0 → v1),

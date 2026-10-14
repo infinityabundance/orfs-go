@@ -1,0 +1,57 @@
+# Publish a multi-arch image to GHCR on a tag push, then cut a release.
+#
+# Kept separate from ci.yml: CI gates the code, this workflow ships the artifact.
+name: publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: set up QEMU (for linux/arm64)
+        uses: docker/setup-qemu-action@v3
+
+      - name: set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: build and push (linux/amd64, linux/arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runtime
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/infinityabundance/orfs-go:${{ github.ref_name }}
+            ghcr.io/infinityabundance/orfs-go:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ github.ref_name }}
+
+  release:
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: create release with generated notes
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true

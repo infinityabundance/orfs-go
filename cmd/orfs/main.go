@@ -356,6 +356,7 @@ func cmdMount(args []string) int {
 	readOnly := fs.Bool("read-only", false, "mount read-only")
 	allowOther := fs.Bool("allow-other", false, "allow other users")
 	defaultPerms := fs.Bool("default-permissions", false, "delegate permission checks to the kernel")
+	directIO := fs.Bool("direct-io", false, "bypass the page cache (FOPEN_DIRECT_IO)")
 	attrTTL := fs.Float64("attr-ttl-ms", 1000, "attribute cache TTL in ms")
 	entryTTL := fs.Float64("entry-ttl-ms", 1000, "entry cache TTL in ms")
 	fsName := fs.String("fsname", "", "filesystem name")
@@ -378,6 +379,7 @@ func cmdMount(args []string) int {
 		AllowOther:         *allowOther,
 		ReadOnly:           *readOnly,
 		DefaultPermissions: *defaultPerms,
+		DirectIO:           *directIO,
 		AttrTTLSeconds:     *attrTTL / 1000.0,
 		EntryTTLSeconds:    *entryTTL / 1000.0,
 		FsName:             *fsName,

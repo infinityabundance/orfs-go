@@ -33,6 +33,12 @@ its owning phase rather than pretending to work.
 | 23 | Endurance amplification court (logical vs physical vs manifested bytes) | planned |
 | 24 | F2 (FUSE-over-`io_uring`) transport with SQ/CQ-pressure counters | planned |
 | 25 | Cross-generation fixtures with the Rust reference (byte-for-byte) | planned |
+| 26 | Growth/amplification court (non-withdrawal) + receipts | complete |
+| 27 | External baseline court (`fio` vs ext4/tmpfs, honest FUSE tax) + 64-thread scaling | complete |
+| 28 | fsstress-equivalent court (bounded op storm + POSIX extras + `verify --deep`) | complete |
+| 29 | Capacity `CapacityExhausted` + quarantine-never-truncates courts + receipts | complete |
+| 30 | Multi-arch publish workflow + tagged release | complete |
+| 31 | F2 (FUSE-over-`io_uring`); cross-FS determinism; group commit; S3-FIFO admission | planned |
 
 ## Phase 14 provenance note
 

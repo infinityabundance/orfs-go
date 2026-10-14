@@ -1,0 +1,504 @@
+{
+  "arms": [
+    {
+      "schema": "orfs.performance.amplification.v1",
+      "arm": "authoritative",
+      "epochs": 24,
+      "payload_bytes": 16384,
+      "note": "bounded growth court; each epoch overwrites one file so retained history grows monotonically (Law I)",
+      "samples": [
+        {
+          "epoch": 1,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 17521,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 17521,
+          "amplification_authoritative": 1.06939697265625,
+          "amplification_manifested": 0,
+          "transactions": 9
+        },
+        {
+          "epoch": 2,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 34257,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 34257,
+          "amplification_authoritative": 2.09088134765625,
+          "amplification_manifested": 0,
+          "transactions": 12
+        },
+        {
+          "epoch": 3,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 50993,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 50993,
+          "amplification_authoritative": 3.11236572265625,
+          "amplification_manifested": 0,
+          "transactions": 15
+        },
+        {
+          "epoch": 4,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 67729,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 67729,
+          "amplification_authoritative": 4.13385009765625,
+          "amplification_manifested": 0,
+          "transactions": 18
+        },
+        {
+          "epoch": 5,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 84465,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 84465,
+          "amplification_authoritative": 5.15533447265625,
+          "amplification_manifested": 0,
+          "transactions": 21
+        },
+        {
+          "epoch": 6,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 101201,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 101201,
+          "amplification_authoritative": 6.17681884765625,
+          "amplification_manifested": 0,
+          "transactions": 24
+        },
+        {
+          "epoch": 7,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 117937,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 117937,
+          "amplification_authoritative": 7.19830322265625,
+          "amplification_manifested": 0,
+          "transactions": 27
+        },
+        {
+          "epoch": 8,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 134673,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 134673,
+          "amplification_authoritative": 8.21978759765625,
+          "amplification_manifested": 0,
+          "transactions": 30
+        },
+        {
+          "epoch": 9,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 151409,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 151409,
+          "amplification_authoritative": 9.24127197265625,
+          "amplification_manifested": 0,
+          "transactions": 33
+        },
+        {
+          "epoch": 10,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 168145,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 168145,
+          "amplification_authoritative": 10.26275634765625,
+          "amplification_manifested": 0,
+          "transactions": 36
+        },
+        {
+          "epoch": 11,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 184881,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 184881,
+          "amplification_authoritative": 11.28424072265625,
+          "amplification_manifested": 0,
+          "transactions": 39
+        },
+        {
+          "epoch": 12,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 201617,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 201617,
+          "amplification_authoritative": 12.30572509765625,
+          "amplification_manifested": 0,
+          "transactions": 42
+        },
+        {
+          "epoch": 13,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 218353,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 218353,
+          "amplification_authoritative": 13.32720947265625,
+          "amplification_manifested": 0,
+          "transactions": 45
+        },
+        {
+          "epoch": 14,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 235089,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 235089,
+          "amplification_authoritative": 14.34869384765625,
+          "amplification_manifested": 0,
+          "transactions": 48
+        },
+        {
+          "epoch": 15,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 251825,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 251825,
+          "amplification_authoritative": 15.37017822265625,
+          "amplification_manifested": 0,
+          "transactions": 51
+        },
+        {
+          "epoch": 16,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 268561,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 268561,
+          "amplification_authoritative": 16.39166259765625,
+          "amplification_manifested": 0,
+          "transactions": 54
+        },
+        {
+          "epoch": 17,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 285297,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 285297,
+          "amplification_authoritative": 17.41314697265625,
+          "amplification_manifested": 0,
+          "transactions": 57
+        },
+        {
+          "epoch": 18,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 302033,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 302033,
+          "amplification_authoritative": 18.43463134765625,
+          "amplification_manifested": 0,
+          "transactions": 60
+        },
+        {
+          "epoch": 19,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 318769,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 318769,
+          "amplification_authoritative": 19.45611572265625,
+          "amplification_manifested": 0,
+          "transactions": 63
+        },
+        {
+          "epoch": 20,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 335505,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 335505,
+          "amplification_authoritative": 20.47760009765625,
+          "amplification_manifested": 0,
+          "transactions": 66
+        },
+        {
+          "epoch": 21,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 352241,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 352241,
+          "amplification_authoritative": 21.49908447265625,
+          "amplification_manifested": 0,
+          "transactions": 69
+        },
+        {
+          "epoch": 22,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 368977,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 368977,
+          "amplification_authoritative": 22.52056884765625,
+          "amplification_manifested": 0,
+          "transactions": 72
+        },
+        {
+          "epoch": 23,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 385713,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 385713,
+          "amplification_authoritative": 23.54205322265625,
+          "amplification_manifested": 0,
+          "transactions": 75
+        },
+        {
+          "epoch": 24,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 402449,
+          "manifested_bytes": 0,
+          "total_physical_bytes": 402449,
+          "amplification_authoritative": 24.56353759765625,
+          "amplification_manifested": 0,
+          "transactions": 78
+        }
+      ]
+    },
+    {
+      "schema": "orfs.performance.amplification.v1",
+      "arm": "manifested",
+      "epochs": 24,
+      "payload_bytes": 16384,
+      "note": "bounded growth court; each epoch overwrites one file so retained history grows monotonically (Law I)",
+      "samples": [
+        {
+          "epoch": 1,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 17521,
+          "manifested_bytes": 17026,
+          "total_physical_bytes": 34547,
+          "amplification_authoritative": 1.06939697265625,
+          "amplification_manifested": 1.0391845703125,
+          "transactions": 9
+        },
+        {
+          "epoch": 2,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 34257,
+          "manifested_bytes": 34052,
+          "total_physical_bytes": 68309,
+          "amplification_authoritative": 2.09088134765625,
+          "amplification_manifested": 2.078369140625,
+          "transactions": 12
+        },
+        {
+          "epoch": 3,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 50993,
+          "manifested_bytes": 51078,
+          "total_physical_bytes": 102071,
+          "amplification_authoritative": 3.11236572265625,
+          "amplification_manifested": 3.1175537109375,
+          "transactions": 15
+        },
+        {
+          "epoch": 4,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 67729,
+          "manifested_bytes": 68104,
+          "total_physical_bytes": 135833,
+          "amplification_authoritative": 4.13385009765625,
+          "amplification_manifested": 4.15673828125,
+          "transactions": 18
+        },
+        {
+          "epoch": 5,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 84465,
+          "manifested_bytes": 85130,
+          "total_physical_bytes": 169595,
+          "amplification_authoritative": 5.15533447265625,
+          "amplification_manifested": 5.1959228515625,
+          "transactions": 21
+        },
+        {
+          "epoch": 6,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 101201,
+          "manifested_bytes": 102157,
+          "total_physical_bytes": 203358,
+          "amplification_authoritative": 6.17681884765625,
+          "amplification_manifested": 6.23516845703125,
+          "transactions": 24
+        },
+        {
+          "epoch": 7,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 117937,
+          "manifested_bytes": 119184,
+          "total_physical_bytes": 237121,
+          "amplification_authoritative": 7.19830322265625,
+          "amplification_manifested": 7.2744140625,
+          "transactions": 27
+        },
+        {
+          "epoch": 8,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 134673,
+          "manifested_bytes": 136212,
+          "total_physical_bytes": 270885,
+          "amplification_authoritative": 8.21978759765625,
+          "amplification_manifested": 8.313720703125,
+          "transactions": 30
+        },
+        {
+          "epoch": 9,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 151409,
+          "manifested_bytes": 153240,
+          "total_physical_bytes": 304649,
+          "amplification_authoritative": 9.24127197265625,
+          "amplification_manifested": 9.35302734375,
+          "transactions": 33
+        },
+        {
+          "epoch": 10,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 168145,
+          "manifested_bytes": 170268,
+          "total_physical_bytes": 338413,
+          "amplification_authoritative": 10.26275634765625,
+          "amplification_manifested": 10.392333984375,
+          "transactions": 36
+        },
+        {
+          "epoch": 11,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 184881,
+          "manifested_bytes": 187296,
+          "total_physical_bytes": 372177,
+          "amplification_authoritative": 11.28424072265625,
+          "amplification_manifested": 11.431640625,
+          "transactions": 39
+        },
+        {
+          "epoch": 12,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 201617,
+          "manifested_bytes": 204324,
+          "total_physical_bytes": 405941,
+          "amplification_authoritative": 12.30572509765625,
+          "amplification_manifested": 12.470947265625,
+          "transactions": 42
+        },
+        {
+          "epoch": 13,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 218353,
+          "manifested_bytes": 221352,
+          "total_physical_bytes": 439705,
+          "amplification_authoritative": 13.32720947265625,
+          "amplification_manifested": 13.51025390625,
+          "transactions": 45
+        },
+        {
+          "epoch": 14,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 235089,
+          "manifested_bytes": 238380,
+          "total_physical_bytes": 473469,
+          "amplification_authoritative": 14.34869384765625,
+          "amplification_manifested": 14.549560546875,
+          "transactions": 48
+        },
+        {
+          "epoch": 15,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 251825,
+          "manifested_bytes": 255408,
+          "total_physical_bytes": 507233,
+          "amplification_authoritative": 15.37017822265625,
+          "amplification_manifested": 15.5888671875,
+          "transactions": 51
+        },
+        {
+          "epoch": 16,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 268561,
+          "manifested_bytes": 272436,
+          "total_physical_bytes": 540997,
+          "amplification_authoritative": 16.39166259765625,
+          "amplification_manifested": 16.628173828125,
+          "transactions": 54
+        },
+        {
+          "epoch": 17,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 285297,
+          "manifested_bytes": 289464,
+          "total_physical_bytes": 574761,
+          "amplification_authoritative": 17.41314697265625,
+          "amplification_manifested": 17.66748046875,
+          "transactions": 57
+        },
+        {
+          "epoch": 18,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 302033,
+          "manifested_bytes": 306492,
+          "total_physical_bytes": 608525,
+          "amplification_authoritative": 18.43463134765625,
+          "amplification_manifested": 18.706787109375,
+          "transactions": 60
+        },
+        {
+          "epoch": 19,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 318769,
+          "manifested_bytes": 323520,
+          "total_physical_bytes": 642289,
+          "amplification_authoritative": 19.45611572265625,
+          "amplification_manifested": 19.74609375,
+          "transactions": 63
+        },
+        {
+          "epoch": 20,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 335505,
+          "manifested_bytes": 340548,
+          "total_physical_bytes": 676053,
+          "amplification_authoritative": 20.47760009765625,
+          "amplification_manifested": 20.785400390625,
+          "transactions": 66
+        },
+        {
+          "epoch": 21,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 352241,
+          "manifested_bytes": 357576,
+          "total_physical_bytes": 709817,
+          "amplification_authoritative": 21.49908447265625,
+          "amplification_manifested": 21.82470703125,
+          "transactions": 69
+        },
+        {
+          "epoch": 22,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 368977,
+          "manifested_bytes": 374604,
+          "total_physical_bytes": 743581,
+          "amplification_authoritative": 22.52056884765625,
+          "amplification_manifested": 22.864013671875,
+          "transactions": 72
+        },
+        {
+          "epoch": 23,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 385713,
+          "manifested_bytes": 391632,
+          "total_physical_bytes": 777345,
+          "amplification_authoritative": 23.54205322265625,
+          "amplification_manifested": 23.9033203125,
+          "transactions": 75
+        },
+        {
+          "epoch": 24,
+          "logical_bytes": 16384,
+          "authoritative_physical_bytes": 402449,
+          "manifested_bytes": 408660,
+          "total_physical_bytes": 811109,
+          "amplification_authoritative": 24.56353759765625,
+          "amplification_manifested": 24.942626953125,
+          "transactions": 78
+        }
+      ]
+    }
+  ],
+  "method": "bounded growth court: each epoch overwrites one file so retained history grows monotonically",
+  "schema": "orfs.performance.amplification.v1"
+}

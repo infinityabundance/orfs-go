@@ -1,0 +1,9 @@
+{
+  "committed_prefix_same": true,
+  "quarantined": true,
+  "schema": "orfs.recovery.quarantine.v1",
+  "tail_bytes_retained": 8,
+  "tail_bytes_written": 8,
+  "tail_kind": "torn-record",
+  "truncated": false
+}
