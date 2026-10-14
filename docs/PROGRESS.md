@@ -27,7 +27,7 @@ its owning phase rather than pretending to work.
 | 17 | One-command container verification (`scripts/container-verify.sh`) | complete |
 | 18 | Sealed dense-ordinal inode spine for the historical role (10.5× smaller, ~40× faster lookup than a map) | complete |
 | 19 | Concealed manifestation on the EKBLOOM codec: manifested bodies, exact-identity certification (body self-digest + authority binding), honest fallback, live `read(2)` selection, `orfs manifest`, and a selection/correctness/latency court | complete — measured p50 ~2× better, p99 not claimed, amplification ~1.00× (root profile) |
-| 20 | Simulated power-loss device (barrier/partial/torn flushes) and its crash-consistency court | complete |
+| 20 | Simulated power-loss device (barrier/partial/torn flushes) and its crash-consistency court | complete (the real-process `SIGKILL` court is phase 36) |
 | 21 | Named historical snapshots and index checkpoints bounding replay | planned |
 | 22 | External baseline courts (ext4/tmpfs/overlay/raw) and 64-thread scaling | planned |
 | 23 | Endurance amplification court (logical vs physical vs manifested bytes) | planned |
@@ -43,6 +43,7 @@ its owning phase rather than pretending to work.
 | 33 | Cross-FS determinism (identical authoritative log bytes across ext4/xfs/btrfs/tmpfs, fixed uuid + pinned clock) | complete |
 | 34 | pjdfstest court (upstream POSIX syscall suite vs the mount; deviations published, not allowlisted) | complete — 8798/8798 assertions pass, 0 deviations |
 | 35 | Group commit: an opt-in `Log` coordinator coalescing concurrent publishes behind one durability barrier (own root + contiguous sequence numbers per transaction; all-or-nothing on a failed fsync), with correctness courts and an OFF-vs-ON receipt | complete — 4.31× throughput, 4.49× better p50 on the container backing |
+| 36 | Real-process crash-consistency court: `SIGKILL` the `cmd/orfscrashtest` writer mid-append, reopen read-write (quarantine MOVES the abandoned tail, never truncates), prove the committed prefix is byte-identical and the recovered root is a committed boundary, `verify --deep`, and publish `evidence/crash.json` | complete — 1000 kills, 379 abandoned tails (4 torn / 375 uncommitted) all quarantined; 0 truncations / 0 prefix mismatches / 0 recover failures |
 
 ## Phase 14 provenance note
 

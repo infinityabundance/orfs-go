@@ -360,6 +360,48 @@ sh scripts/container-go-courts.sh   # writes evidence/performance/allocs.json
 
 Receipt: `evidence/performance/allocs.json` (schema `orfs.performance.allocs.v1`).
 
+## 7f. Crash-consistency court (real process kill)
+
+Court: `internal/log` (`TestCrashConsistencyCourt`), run inside the court
+container by `scripts/container-go-courts.sh` with `ORFS_EVIDENCE=1`.
+
+Measures what happens when a **real writer process is `SIGKILL`ed mid-append** —
+not a clean shutdown and not the simulated device (`internal/powerloss`). A small
+helper (`cmd/orfscrashtest`) opens a volume and publishes transactions (an
+`INODE_CREATE` batch, one durability barrier per publish) in a tight loop until it
+is killed. It installs no signal handler and performs no cleanup, so `kill -9`
+terminates it exactly as a crash would.
+
+Each iteration creates a fresh volume, spawns the writer, waits a random small
+interval, `SIGKILL`s it, then reopens read-write (which quarantines the abandoned
+tail) and asserts: the recovered root is the newest valid committed boundary; the
+committed prefix is byte-identical to the bytes that survived the kill; every
+abandoned byte is **moved** into `quarantine/` (never truncated); and
+`verify --deep` passes. It then publishes one further transaction to prove the log
+continues at the recovered root. Segments are sized (genesis frame + one
+transaction) so every committed transaction ends at a segment boundary and each
+append begins in a fresh trailing segment, so a mid-append kill always leaves a
+movable tail.
+
+Run:
+
+```sh
+sh scripts/container-go-courts.sh   # writes evidence/crash.json
+```
+
+Receipt: `evidence/crash.json` (schema `orfs.performance.crash.v1`).
+
+Measured (this host, container overlay/ext4): **1000 kills**. **379** landed
+mid-append and left an abandoned tail (**4** torn, **375** uncommitted); the other
+**621** landed after a transaction's bytes were complete (e.g. during its fsync
+barrier), so recovery reached that transaction with no tail. **All 379 tails were
+quarantined (moved, never truncated)**, and **0 truncations, 0 prefix mismatches,
+0 recovery failures** were observed: `verify --deep` passed all 1000 recovered
+volumes and all 1000 continued with one further committed transaction at the
+recovered root. This is a process kill, not power loss — bytes in the page cache
+survive it, so device-cache reordering and torn sectors remain the domain of the
+simulated `internal/powerloss` court.
+
 ## 8. The frontier: measured versus not yet measured
 
 Measured today (all bounded, laboratory conditions):
@@ -381,6 +423,7 @@ Measured today (all bounded, laboratory conditions):
 | pjdfstest conformance | 8798/8798 assertions pass; 0 deviations | `evidence/performance/pjdfstest.json` |
 | group commit | 4.31× throughput / 4.49× better p50 vs a barrier per publish (bounded by the backing store's fsync cost) | `evidence/performance/groupcommit.json` |
 | per-read allocations | authoritative 4 KiB read: 2 -> 1 allocs/op (~470 ns/op); the returned `[]byte` is the only allocation | `evidence/performance/allocs.json` |
+| crash consistency (real `SIGKILL`) | 1000 kills mid-append: 379 abandoned tails (4 torn / 375 uncommitted), all quarantined (moved, never truncated); 0 truncations / 0 prefix mismatches / 0 recover failures; `verify --deep` clean | `evidence/crash.json` |
 
 Explicitly not yet measured (absence is deliberate, not implied):
 

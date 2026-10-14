@@ -52,7 +52,9 @@ sh scripts/container-go-courts.sh
 That sets `ORFS_EVIDENCE=1` and runs
 `go test ./internal/orbench/ ./internal/log/ -run "TestAmplification|TestCapacity|TestQuarantine"`,
 writing `evidence/performance/amplification.json` and
-`evidence/recovery/{capacity,quarantine}.json`.
+`evidence/recovery/{capacity,quarantine}.json`. It also runs the crash-consistency
+court (`internal/log/TestCrashConsistencyCourt`, `ORFS_CRASH_ITERS=1000`), writing
+`evidence/crash.json`.
 
 An ordinary `go test ./...` (and therefore `scripts/container-test.sh` and
 `scripts/container-verify.sh`) leaves tracked evidence untouched.
@@ -86,6 +88,7 @@ courts do not need `/dev/fuse`.
 | fsstress-equivalent + POSIX extras | `sh scripts/container-fsstress.sh` | `evidence/performance/fsstress.json` |
 | mounted POSIX court | `sh scripts/container-fuse-test.sh` | none (PASS/FAIL) |
 | recovery: capacity / quarantine | `sh scripts/container-go-courts.sh` | `evidence/recovery/capacity.json`, `evidence/recovery/quarantine.json` |
+| crash consistency (real `SIGKILL` mid-append) | `sh scripts/container-go-courts.sh` | `evidence/crash.json` |
 | cross-FS determinism (ext4/xfs/btrfs/tmpfs identical log bytes) | `sh scripts/container-crossfs.sh` | `evidence/correctness/cross-fs.json` |
 | pjdfstest POSIX conformance suite | `sh scripts/container-pjdfstest.sh` | `evidence/performance/pjdfstest.json` |
 | full pre-PR gate | `sh scripts/container-verify.sh` | per-stage PASS/FAIL/SKIPPED summary |

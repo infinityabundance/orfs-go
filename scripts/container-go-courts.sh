@@ -1,7 +1,7 @@
 #!/bin/sh
 # Run the in-Go courts with ORFS_EVIDENCE=1 so their receipts are written into
-# the repository: evidence/performance/{amplification,cache,groupcommit,allocs}.json
-# and evidence/recovery/{capacity,quarantine}.json.
+# the repository: evidence/performance/{amplification,cache,groupcommit,allocs}.json,
+# evidence/recovery/{capacity,quarantine}.json, and evidence/crash.json.
 set -eu
 . "$(dirname "$0")/lib.sh"
 
@@ -25,4 +25,10 @@ docker_run env ORFS_EVIDENCE=1 sh -c \
 # Writes evidence/performance/allocs.json (schema orfs.performance.allocs.v1).
 docker_run env ORFS_EVIDENCE=1 sh -c \
   'go test ./internal/namespace/ -run TestAuthoritativeReadAllocs -count=1'
-echo "container-go-courts: PASS — receipts in evidence/performance/ and evidence/recovery/"
+# Crash-consistency court: a REAL SIGKILL of the cmd/orfscrashtest writer at a
+# random point mid-append, then reopen read-write (quarantining the abandoned
+# tail) and verify --deep. 1000 iterations. Writes evidence/crash.json (schema
+# orfs.performance.crash.v1).
+docker_run env ORFS_EVIDENCE=1 ORFS_CRASH_ITERS=1000 ORFS_CRASH_BUDGET_S=300 sh -c \
+  'go test ./internal/log/ -run TestCrashConsistencyCourt -count=1'
+echo "container-go-courts: PASS — receipts in evidence/performance/, evidence/recovery/, and evidence/crash.json"

@@ -27,14 +27,19 @@ history-scaling court and its numbers are pending (`docs/OPERATIONS.md` §3).
 
 ## 3. Power-loss durability is simulated only
 
-Crash consistency is exercised by a process-crash court (kill mid-write, reopen
-independently), by the recovery logic itself, and by a simulated volatile
-device-cache model (`internal/powerloss`: barrier / partial / torn-tail flushes)
-whose court proves recovery reaches a complete committed boundary or refuses —
-never exposing uncommitted data. **No real-hardware durability is claimed:**
-the model proves safety relative to the modelled device, and no profile asserts
-power-loss durability. Only an instrumented power-loss rig can test real
-hardware.
+Crash consistency is exercised two ways. A **real-process crash court** kills the
+`cmd/orfscrashtest` writer with `SIGKILL` at a random point mid-append (no signal
+handler, no cleanup), then reopens the volume and proves recovery reaches the
+newest valid committed boundary with the abandoned tail quarantined (moved, never
+truncated), the committed prefix byte-identical, and `verify --deep` clean
+(`docs/BENCH.md` §7f; receipt `evidence/crash.json`). Separately, a **simulated
+volatile device-cache model** (`internal/powerloss`: barrier / partial / torn-tail
+flushes) proves recovery reaches a complete committed boundary or refuses —
+never exposing uncommitted data. **No real-hardware durability is claimed:** the
+process-kill court models a crash, not a power cut (bytes in the page cache
+survive a `kill -9`), the model proves safety relative to the modelled device, and
+no profile asserts power-loss durability. Only an instrumented power-loss rig can
+test real hardware.
 
 ## 4. Trailing-segment loss is detected, with a residual window
 
