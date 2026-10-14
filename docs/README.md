@@ -45,6 +45,7 @@ capability, it is backed by code and, where a behaviour is claimed, by a court i
 | [`grafana/orfs-worm-dashboard.json`](grafana/orfs-worm-dashboard.json) | A minimal Grafana dashboard over the `orfs metrics` exposition |
 | [`../courts/auditsink/dashboard.json`](../courts/auditsink/dashboard.json) | The 5-panel audit-sink Grafana dashboard (bytes+amplification, barrier p50/p99, batch size, breach/quarantine rate, verify failures) |
 | [`../courts/oss-compare/README.md`](../courts/oss-compare/README.md) | The open-source storage head-to-head court (step 1, OrFS-GO vs OrFS-Rust): the shared deterministic driver and the comparability rules |
+| [`../courts/retention-btrfs/README.md`](../courts/retention-btrfs/README.md) | The Btrfs retained-snapshots retention court: one epoch workload, a read-only snapshot per epoch, and the physical-space economics of retaining every state (vs the OrFS-GO log) |
 
 ## The one rule
 

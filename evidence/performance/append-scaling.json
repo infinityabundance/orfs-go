@@ -7,41 +7,41 @@
     {
       "appends": 256,
       "extents": 256,
-      "mean_ns_per_append": 33468.203125,
-      "total_ns": 6425895
+      "mean_ns_per_append": 27833.286458333332,
+      "total_ns": 5343991
     },
     {
       "appends": 512,
       "extents": 512,
-      "mean_ns_per_append": 30078.52901785714,
-      "total_ns": 13475181
+      "mean_ns_per_append": 28979.620535714286,
+      "total_ns": 12982870
     },
     {
       "appends": 1024,
       "extents": 1024,
-      "mean_ns_per_append": 29409.783333333333,
-      "total_ns": 28233392
+      "mean_ns_per_append": 27678.675,
+      "total_ns": 26571528
     },
     {
       "appends": 2048,
       "extents": 2048,
-      "mean_ns_per_append": 29090.584677419356,
-      "total_ns": 57715720
+      "mean_ns_per_append": 28661.838205645163,
+      "total_ns": 56865087
     },
     {
       "appends": 4096,
       "extents": 4096,
-      "mean_ns_per_append": 27958.024553571428,
-      "total_ns": 112726755
+      "mean_ns_per_append": 27972.031498015873,
+      "total_ns": 112783231
     },
     {
       "appends": 8192,
       "extents": 8192,
-      "mean_ns_per_append": 27548.426673228347,
-      "total_ns": 223913612
+      "mean_ns_per_append": 29401.69746555118,
+      "total_ns": 238976997
     }
   ],
-  "growth_ratio": 0.8231223699204302,
+  "growth_ratio": 1.0563501909688522,
   "bounded": true,
   "note": "the per-append cost must not grow with the file's retained extent count; a rising curve means the extent map has regressed to O(E) per write (structural sharing lost). Measured on this host; run-to-run variance is expected.",
   "method": "one 4 KiB append at EOF per transaction to a single file; equal durability (each append is its own authoritatively committed transaction with its durability barrier); mean is over appends after a fixed warm-up, on a fresh volume per point.",

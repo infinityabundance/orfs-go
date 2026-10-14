@@ -43,7 +43,9 @@ RUN CGO_ENABLED=0 go build -o /out/orfs ./cmd/orfs \
  && CGO_ENABLED=0 go build -o /out/orfsxlang ./cmd/orfsxlang \
  && CGO_ENABLED=0 go build -o /out/orfsoptprobe ./cmd/orfsoptprobe \
  && CGO_ENABLED=0 go build -o /out/orfscompare ./cmd/orfscompare \
- && CGO_ENABLED=0 go build -o /out/osscomparesummary ./cmd/osscomparesummary
+ && CGO_ENABLED=0 go build -o /out/osscomparesummary ./cmd/osscomparesummary \
+ && CGO_ENABLED=0 go build -o /out/retentionbench ./cmd/retentionbench \
+ && CGO_ENABLED=0 go build -o /out/retentionsummary ./cmd/retentionsummary
 
 # Build the upstream pjdfstest suite into the image so the pjdfstest court can
 # run it without cloning at court time. gcc ships in the Go base image; the

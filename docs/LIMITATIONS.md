@@ -190,3 +190,36 @@ FIFO, socket, and device inodes with device numbers), the rename sticky-bit and
 link-count rules, independent ctime semantics for metadata changes, the chmod
 `S_ISGID` clear for a non-group caller, and `default_permissions` so the kernel
 enforces DAC on special files whose `open(2)` never reaches the daemon.
+
+## 12. Retention is measured on a bounded, warm workload; several axes are Btrfs-only
+
+The retention court (`docs/BENCH.md` §7j; `courts/retention-btrfs/`) measures what
+it costs to retain every committed state. What it does **not** establish:
+
+- **No cold-read retention number.** The snapshot read arms run immediately after
+each snapshot is created, so they are page-cache-warm; the measured result is only
+that a historical read is no slower than a current read when warm. A cold-cache or
+`O_DIRECT` historical read is not measured.
+- **The OrFS-GO historical-read axis is not measured at all.** This build does not
+serve named historical roots (`orfs snapshot` still reports its owning phase;
+`SNAPSHOT_ROOT` is decoded but not served — §10). The court records this as an
+explicit non-comparability, not as an OrFS win or loss; the OrFS-GO current-state
+read serves only the newest committed bytes.
+- **The two physical-bytes numbers are different computations.** Btrfs physical is
+the whole device's `Used` (data plus CoW metadata); OrFS-GO physical is the
+authoritative `or.log` blocks. The 1.246× (Btrfs) vs 1.116× (OrFS-GO) ratios are
+therefore not a like-for-like ranking.
+- **The append comparison carries the FUSE tax.** The OrFS-GO append pays the FUSE
+round trip and the daemon's framing; the Btrfs append pays only the kernel Btrfs
+`write`+`fsync`, so the ~4.4× kernel advantage is not a fair “log vs snapshot”
+cost comparison.
+- **The read comparison is native-vs-FUSE, not retention.** The Btrfs read is a
+native local filesystem read served from the page cache (no FUSE, no daemon); the
+OrFS-GO read is a FUSE request plus a daemon `pread`. The ~41× read gap is the
+cost of the FUSE data path, not a retention cost, and neither row ranks the other.
+- **Only a small, bounded workload is retained.** 8 epochs / 8 MiB of logical data
+on a 512 MiB loop image, one run; no long-history or endurance retention curve is
+measured, and no number is extrapolated.
+- **No compression/dedup/qgroup accounting.** Compression, dedup and per-qgroup
+referenced/exclusive accounting are not enabled or measured; snapshot sharing is
+read from `btrfs filesystem du` only.

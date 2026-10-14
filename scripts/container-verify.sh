@@ -72,6 +72,8 @@ else
         sh "$(dirname "$0")/container-crosslang.sh"
       run_stage "oss-compare (mounted OrFS-GO vs OrFS-Rust: append+fsync and read)" \
         sh "$(dirname "$0")/container-oss-compare.sh"
+      run_stage "retention-btrfs (Btrfs read-only snapshots vs the OrFS-GO log: retain every committed state)" \
+        sh "$(dirname "$0")/container-retention-btrfs.sh"
     else
       skip "fuse (mounted POSIX court)" "no /dev/fuse"
       skip "fsstress (bounded op storm + POSIX extras)" "no /dev/fuse"
@@ -84,6 +86,7 @@ else
       skip "audit-sink (JSON audit-log sink: inotify tail, immutability, scrape)" "no /dev/fuse"
       skip "cross-language (Rust reference <-> Go: fixtures, mounts, handoffs, recovery)" "no /dev/fuse"
       skip "oss-compare (mounted OrFS-GO vs OrFS-Rust: append+fsync and read)" "no /dev/fuse"
+      skip "retention-btrfs (Btrfs read-only snapshots vs the OrFS-GO log: retain every committed state)" "no /dev/fuse"
     fi
   else
     skip "race (concurrent immutable reads)" "--fast"
@@ -100,6 +103,7 @@ else
     skip "audit-sink (JSON audit-log sink: inotify tail, immutability, scrape)" "--fast"
     skip "cross-language (Rust reference <-> Go: fixtures, mounts, handoffs, recovery)" "--fast"
     skip "oss-compare (mounted OrFS-GO vs OrFS-Rust: append+fsync and read)" "--fast"
+    skip "retention-btrfs (Btrfs read-only snapshots vs the OrFS-GO log: retain every committed state)" "--fast"
   fi
 fi
 

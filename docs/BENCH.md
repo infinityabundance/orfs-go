@@ -656,6 +656,101 @@ receipt's `comparability` block):**
   barrier per 4 KiB record, 4 KiB record size, and the 8 MiB segment size are the
   same on both sides.
 
+## 7j. Retention court: Btrfs read-only snapshots vs the OrFS-GO log
+
+Court: `scripts/retention-btrfs-court.sh` + `cmd/retentionbench` (the driver) +
+`cmd/retentionsummary` (merge), run inside a privileged court container by
+`scripts/container-retention-btrfs.sh`. Design and the comparability rules:
+[`../courts/retention-btrfs/README.md`](../courts/retention-btrfs/README.md).
+
+This is a **retention** court, not a leaderboard: *can a system retain every
+committed historical transition while achieving comparable tail latency,
+throughput and physical-space economics?* OrFS retains history in its
+authoritative log (non-withdrawal, Law I); Btrfs retains it with a **read-only
+snapshot after every epoch**. One defined, bounded epoch workload drives both: 8
+epochs, each appending 256 records of 4 KiB per writer with `write(2)`+`fsync(2)`
+per record (one durability barrier per record), on same-sized loop-mounted Btrfs
+backings, under the shared 2 GiB / 4 CPU / pids-1024 caps. Each retained state is
+8 MiB of logical data; run-to-run variance is expected and is not quantified.
+
+**Snapshot cost** (`btrfs subvolume snapshot -r`, one per epoch):
+
+| | min | median | max |
+| ---: | ---: | ---: | ---: |
+| snapshot create | 673.6 µs | 730.3 µs | 810.6 µs |
+
+**Append / current-state read / historical-state read** (epoch 0 and epoch 7):
+
+| system | arm | epoch | ops/s | IOPS | p50 | p95 | p99 | p99.9 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Btrfs | append 4 KiB+fsync | 0 | 15 409 | — | 58.1 µs | 95.9 µs | 126.3 µs | 153.8 µs |
+| Btrfs | append 4 KiB+fsync | 7 | 15 673 | — | 58.2 µs | 85.8 µs | 226.9 µs | 672.4 µs |
+| OrFS-GO | append 4 KiB+fsync | 0 | 3 252 | — | 294.9 µs | 418.4 µs | 666.2 µs | 1 462.5 µs |
+| OrFS-GO | append 4 KiB+fsync | 7 | 3 564 | — | 264.9 µs | 406.6 µs | 624.6 µs | 944.3 µs |
+| Btrfs | read current (warm) | 0 | — | 4 133 002 | 0.16 µs | 0.19 µs | 0.25 µs | 0.49 µs |
+| Btrfs | read current (warm) | 7 | — | 3 856 372 | 0.18 µs | 0.26 µs | 0.39 µs | 0.67 µs |
+| Btrfs | read snapshot (warm) | 0 | — | 3 937 318 | 0.17 µs | 0.21 µs | 0.28 µs | 0.60 µs |
+| Btrfs | read snapshot (warm) | 7 | — | 3 637 293 | 0.19 µs | 0.28 µs | 0.39 µs | 5.73 µs |
+| OrFS-GO | read current (buffered) | 0 | — | 104 386 | 8.34 µs | 12.54 µs | 29.89 µs | 66.58 µs |
+| OrFS-GO | read current (buffered) | 7 | — | 94 940 | 8.68 µs | 12.93 µs | 30.43 µs | 66.92 µs |
+
+**Physical vs logical bytes** (retaining every state; device `Used` for Btrfs,
+authoritative `or.log` blocks for OrFS-GO):
+
+| system | epoch | state | logical | physical | phys/logical | snapshot exclusive | snapshot set-shared |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| Btrfs | 0 | current | 1 048 576 | 1 363 149 | 1.300× | 1 048 576 | 0 |
+| Btrfs | 0 | snapshot | 1 048 576 | 1 541 407 | 1.470× | 0 | 1 048 576 |
+| Btrfs | 7 | current | 8 388 608 | 10 265 559 | 1.224× | 1 048 576 | 7 340 032 |
+| Btrfs | 7 | snapshot | 8 388 608 | 10 454 303 | 1.246× | 0 | 8 388 608 |
+| OrFS-GO | 0 | current | 1 048 576 | 1 175 552 | 1.121× | — | — |
+| OrFS-GO | 7 | current | 8 388 608 | 9 363 456 | 1.116× | — | — |
+
+**Honest framing.** *Both* systems retain every committed state: after 8 epochs
+Btrfs has 8 read-only snapshots and OrFS-GO has 8 committed transitions in its
+log. On the space axis Btrfs pays **10.45 MiB** of device bytes to retain 8 MiB of
+logical data (**1.246×**, its CoW metadata included), while OrFS-GO's
+authoritative log holds the same history in **9.36 MiB** (**1.116×**); each
+retained Btrfs snapshot's **exclusive** bytes are **0** (all extents are shared
+with the live subvolume), which is the space-economics point: a snapshot is cheap
+because it shares. On throughput, the **kernel Btrfs append is ~4.4× the OrFS-GO
+FUSE append** (15 673 vs 3 564 ops/s at epoch 7; p50 58.2 vs 264.9 µs) and the
+**warm current read is ~41× the OrFS-GO FUSE read** (3.86 M vs 94.9 k IOPS):
+this is the FUSE tax the head-to-head court already publishes (§7i), now shown
+under a retention workload. The retention-specific result is that a **historical
+snapshot read is as fast as a current read** (Btrfs p50 0.19 vs 0.18 µs warm), so
+retaining the state added no observable read cost.
+
+**Comparability caveats (from the receipt's `comparability` block).** Every row
+above is provisional on these differences, and the axes marked not comparable are
+**not** compared:
+
+- **Historical-state read is Btrfs-only.** OrFS-GO does not serve named
+  historical roots in this build, so there is no OrFS-GO snapshot-read row; its
+  current-state read serves the newest committed bytes.
+- **Snapshot creation is Btrfs-only.** OrFS-GO has no snapshot step to measure.
+- **The physical-bytes accounting schemes differ.** Btrfs physical is the whole
+  device's `Used` (data plus CoW metadata); OrFS-GO physical is the authoritative
+  `or.log` blocks. Both are measured; they are not the same computation.
+- **The append comparison carries the FUSE tax.** The OrFS-GO append pays the
+  FUSE round trip and the daemon's framing; the Btrfs append pays only the kernel
+  Btrfs `write`+`fsync`. Recorded, not removed.
+- **Reads are warm (buffered).** Each snapshot read runs just after the snapshot
+  is created, so reads hit cache; the axis shows historical reads are no slower
+  than current reads, not a cold-device number.
+- **The read comparison is native-vs-FUSE, not retention.** The Btrfs read is a
+  native local filesystem read served from the page cache (no FUSE, no daemon);
+  the OrFS-GO read is a FUSE request plus a daemon `pread`. The ~41× gap is the
+  cost of the FUSE data path (the same tax §7i publishes between two FUSE
+  daemons), not a retention cost, and the two rows do not rank each other.
+- **Host variance.** Page-cache state, the scheduler, and the backing device's
+  write cache are uncontrolled beyond the shared container.
+
+No ranking is implied: rows are keyed by `{system, kind, state, epoch, writers,
+readers, block_size}`, and two rows are comparable only at the same coordinate
+and only under the caveats above. The receipt is
+`evidence/retention-btrfs.json` (schema `orfs.retention.btrfs.v1`).
+
 ## 8. The frontier: measured versus not yet measured
 
 Measured today (all bounded, laboratory conditions):
@@ -682,6 +777,7 @@ Measured today (all bounded, laboratory conditions):
 | Go-runtime GC scaling | 9-arm GOGC×GOMEMLIMIT sweep under 64 readers + 8 writers: p99.9 3.9 ms (`GOGC=50`) … 78.2 ms (`GOGC=off`+512MiB); GC pauses ≤ 98 µs (not the tail); ~2–3 GB/s allocation; `GOGC=off`+no limit OOM-killed ~1.3 s in. **After** removing the global read lock: `/sync/mutex/wait` down 1.5–10× (2.4× at `GOGC=100`), reader throughput ~2.5×, and the `RWMutex` gone from the lock profiles | `evidence/performance/gc-scaling.json` |
 | lock-free read views | a commit publishes an immutable namespace view (path-copying treap + persistent dentry map) through an `atomic.Pointer`; readers traverse it with no lock. Same-session A/B at 64 readers / 8 writers: mutex wait 141.2→93.1 s (`GOGC=400`) … 162.3→16.0 s (`GOGC=20`); throughput 117→288 kIOPS (`GOGC=100`); p99.9 16.7→3.9 ms (`GOGC=50`); `RWMutex` absent from mutex/block profiles | `docs/CONCURRENCY.md`, `docs/RUNTIME.md` §3b/§3c |
 | mounted head-to-head (OrFS-GO vs OrFS-Rust) | shared deterministic driver, equal durability: durable 4 KiB append+fsync at 1/64 writers and 4K/64K/1MiB random reads at 1/64 readers. OrFS-Rust faster on most rows in this run and the two converge at 64 writers; every configuration difference is recorded as a caveat. Not a leaderboard | `evidence/oss-compare.json` |
+| retention (Btrfs read-only snapshots vs the OrFS-GO log) | one defined epoch workload retains every committed state: Btrfs keeps 8 read-only snapshots (each exclusive 0, all extents shared) at 1.246× device bytes for 8 MiB logical; OrFS-GO keeps 0 snapshots at 1.116× `or.log` bytes; snapshot create ~0.73 ms; a warm historical read equals a warm current read. Historical-read and snapshot-cost axes are Btrfs-only (recorded as not comparable). Not a leaderboard | `evidence/retention-btrfs.json` |
 
 Explicitly not yet measured (absence is deliberate, not implied):
 
@@ -690,7 +786,7 @@ Explicitly not yet measured (absence is deliberate, not implied):
 | F2 FUSE-over-`io_uring` transport | **not reachable from pure Go via go-fuse** — the kernel supports it (probed live), the linked library does not; the measured F0 comparison is published (`TRANSPORT.md`, §6b) |
 | Multi-day amplification curve; profile selection by measured worth | not run |
 | Mount latency after a large (2^30-byte) history | not run (`OPERATIONS.md` §3) |
-| Open-source head-to-head, later steps | step 1 ships (`OrFS-GO` vs `OrFS-Rust`, §7i); SeaweedFS FUSE, Btrfs snapshots and OpenZFS are the next comparators, on the same driver and the same rules |
+| Open-source head-to-head, later steps | step 1 ships (`OrFS-GO` vs `OrFS-Rust`, §7i); Btrfs read-only snapshots now ship as the retention court (§7j); SeaweedFS FUSE and OpenZFS are the next comparators, on the same driver and the same rules |
 
 No performance superiority is claimed beyond the measured planner p50 figure and
 the inode-spine measurements. The Go-runtime court measures the daemon's own
