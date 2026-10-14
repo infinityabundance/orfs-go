@@ -64,6 +64,8 @@ else
         sh "$(dirname "$0")/container-pjdfstest.sh"
       run_stage "worm (append-only WORM case study)" \
         sh "$(dirname "$0")/container-worm.sh"
+      run_stage "cross-language (Rust reference <-> Go: fixtures, mounts, handoffs, recovery)" \
+        sh "$(dirname "$0")/container-crosslang.sh"
     else
       skip "fuse (mounted POSIX court)" "no /dev/fuse"
       skip "fsstress (bounded op storm + POSIX extras)" "no /dev/fuse"
@@ -72,6 +74,7 @@ else
       skip "cross-fs determinism (identical log bytes across ext4/xfs/btrfs/tmpfs)" "no /dev/fuse"
       skip "pjdfstest (upstream POSIX syscall suite vs the mount)" "no /dev/fuse"
       skip "worm (append-only WORM case study)" "no /dev/fuse"
+      skip "cross-language (Rust reference <-> Go: fixtures, mounts, handoffs, recovery)" "no /dev/fuse"
     fi
   else
     skip "race (concurrent immutable reads)" "--fast"
@@ -84,6 +87,7 @@ else
     skip "cross-fs determinism (identical log bytes across ext4/xfs/btrfs/tmpfs)" "--fast"
     skip "pjdfstest (upstream POSIX syscall suite vs the mount)" "--fast"
     skip "worm (append-only WORM case study)" "--fast"
+    skip "cross-language (Rust reference <-> Go: fixtures, mounts, handoffs, recovery)" "--fast"
   fi
 fi
 

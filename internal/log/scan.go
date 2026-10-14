@@ -195,7 +195,15 @@ func (m *machine) accept(rec *record.Record, raw []byte, endOffset uint64) *mach
 		if sum != tc.BracketChecksum {
 			return hard("TX_COMMIT bracket checksum mismatch")
 		}
-		if uint64(m.open.beginCount) != m.open.records {
+		// TX_BEGIN.expected_record_count is advisory: the Rust reference writes 0
+		// here from its low-level log API (the value the frozen fixtures carry)
+		// and treats 0 as "no expectation" when verifying (reference
+		// `log.rs`/`transaction.rs::verify_bracket`: `expected_record_count != 0
+		// && …`). The authoritative cross-check is TX_COMMIT.record_count against
+		// the actual bracket, done above. Enforcing a bare 0 here would reject a
+		// valid Rust-written volume, so match the reference exactly: 0 means
+		// unset.
+		if m.open.beginCount != 0 && uint64(m.open.beginCount) != m.open.records {
 			return hard("TX_BEGIN expected_record_count %d != bracketed %d", m.open.beginCount, m.open.records)
 		}
 		m.open = nil

@@ -1,0 +1,81 @@
+--- legacy_v0 dump ---
+committed_root=993
+committed_records=8
+max_transaction_id=2
+type=VOLUME_GENESIS count=1
+type=TX_BEGIN count=2
+type=TX_COMMIT count=2
+type=INODE_CREATE count=1
+type=DENTRY_ADD count=1
+type=DATA_EXTENT count=1
+/ dir mode=0755 nlink=2 size=0
+/hello.txt file mode=0644 nlink=1 size=12 sha256=aec5a165bed9d7d50887dc896e73e3e474a636cc071ae3ac03281ee51cf5feae
+roundtrip: records=8 committed_root=993 byte_identical=true
+--- current_v1 dump ---
+committed_root=995
+committed_records=8
+max_transaction_id=2
+type=VOLUME_GENESIS count=1
+type=TX_BEGIN count=2
+type=TX_COMMIT count=2
+type=INODE_CREATE count=1
+type=DENTRY_ADD count=1
+type=DATA_EXTENT count=1
+/ dir mode=0755 nlink=2 size=0
+/hello.txt file mode=0644 nlink=1 size=12 sha256=aec5a165bed9d7d50887dc896e73e3e474a636cc071ae3ac03281ee51cf5feae
+roundtrip: records=8 committed_root=995 byte_identical=true
+roundtrip: records=108 committed_root=13074 byte_identical=true
+--- full-op Go volume, Rust verify ---
+orfs: incompatible on-disk format: unknown mandatory record type 0x0017
+--- full-op Go volume, record types not in the Rust registry ---
+0x0017 CTIME_UPDATE count=4 not_in_rust_registry
+--- recovery: Rust verify on torn-tail volume ---
+verifying /tmp/tmp.i3g3iL4OmI/rec/vol (deep)
+  [ok] volume_meta: uuid=ee15e0c2-fedb-4957-af7b-fc1f4db4b42a segment_size=262144 created_at=1791997931
+  [ok] volume_genesis: first committed record is VOLUME_GENESIS
+  [ok] genesis_matches_meta: genesis uuid=ee15e0c2-fedb-4957-af7b-fc1f4db4b42a segment_size=262144
+  [ok] log_format_version: genesis log format version 1 (legacy=0, this build supports up to 1)
+  [ok] committed_root_is_boundary: root R=10198
+  [ok] commit_watermark: committed_root=10198 segment=0 valid_len=10198 physical_end=10198
+  [ok] segment_continuity: 2 segment(s)
+  [ok] tail: TornRecord tail at offset 10198 (17 bytes retained, not canonical)
+  [ok] deep_replay_checksums: 84 committed records, CRC32C verified
+  [ok] transaction_brackets: 19 committed transactions: typed payloads and bracket checksums validated
+  [ok] previous_inode_offsets_backward: all previous_inode_offset values point backward
+  [ok] committed_record_count: 84 records (log reports 84)
+  [ok] namespace_index_rebuild: 7 inode(s), 6 dentry(ies); rebuild deterministic=true
+result: PASS
+--- SIGKILL recovery: Go verify ---
+volume:            /tmp/tmp.i3g3iL4OmI/kill/vol
+log format ver:    1
+uuid:              0c0f3a0692b94dd780f862df3248f5ea
+committed root:    5485189
+committed records: 44159
+committed txns:    11039
+segments:          21
+inodes:            3
+dentries:          2
+checks:
+  [ok] framing: every committed record framed and checksummed
+  [ok] transactions: every committed bracket validated
+  [ok] watermark
+  [ok] replay: 3 inode(s), 2 dentr(ies)
+--- in-place torn tail: Rust verify ---
+verifying /tmp/tmp.i3g3iL4OmI/rec2/vol (deep)
+  [ok] volume_meta: uuid=9db8b3b7-bd6f-4b66-ab15-acac57452b64 segment_size=262144 created_at=1791997936
+  [ok] volume_genesis: first committed record is VOLUME_GENESIS
+  [ok] genesis_matches_meta: genesis uuid=9db8b3b7-bd6f-4b66-ab15-acac57452b64 segment_size=262144
+  [ok] log_format_version: genesis log format version 1 (legacy=0, this build supports up to 1)
+  [ok] committed_root_is_boundary: root R=10198
+  [ok] commit_watermark: committed_root=10198 segment=0 valid_len=10198 physical_end=10198
+  [ok] segment_continuity: 1 segment(s)
+  [ok] tail: TornRecord tail at offset 10198 (70 bytes retained, not canonical)
+  [ok] deep_replay_checksums: 84 committed records, CRC32C verified
+  [ok] transaction_brackets: 19 committed transactions: typed payloads and bracket checksums validated
+  [ok] previous_inode_offsets_backward: all previous_inode_offset values point backward
+  [ok] committed_record_count: 84 records (log reports 84)
+  [ok] namespace_index_rebuild: 7 inode(s), 6 dentry(ies); rebuild deterministic=true
+result: PASS
+--- writable-open probe: Go verify ---
+orfs: corrupt: torn record in non-final segment 0 at physical offset 10198
+orfs: corrupt committed state: torn record in non-final segment 0 at physical offset 10198

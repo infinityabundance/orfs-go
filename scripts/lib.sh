@@ -53,6 +53,53 @@ docker_run_fuse() {
     "${IMAGE}" "$@"
 }
 
+# --- Rust reference container -------------------------------------------------
+# The Rust reference (`OrFS`) is the compatibility court's source of truth. It is
+# built and run in the same pinned, resource-capped way as everything else: never
+# on the host. The image matches the reference's own `rust-toolchain.toml`
+# (1.99.0). Cargo's registry and target caches live under the repo's gitignored
+# .cache/ so a rebuild reuses downloads, and every build artifact is redirected
+# away from `.reference/` (CARGO_TARGET_DIR) so a build never writes into the
+# reference tree.
+RUST_IMAGE=${ORFS_RUST_IMAGE:-rust:1.99.0-slim-bookworm}
+# Where the built reference binary is staged for the cross-language court.
+ORFS_RS_DIR=${REPO_ROOT}/.cache/orfs-rs
+ORFS_RS_BIN=${ORFS_RS_DIR}/orfs
+mkdir -p "${REPO_ROOT}/.cache/cargo" "${REPO_ROOT}/.cache/orfs-rs-target" "${ORFS_RS_DIR}"
+
+# docker_run_rust runs an unprivileged rust container as the host user. The
+# platform is pinned to linux/amd64 so the staged binary runs in the (amd64)
+# court image even when the host has a cached arm64 variant of the tag.
+docker_run_rust() {
+  docker run --rm \
+    --platform linux/amd64 \
+    --network host ${CAPS_COMMON} \
+    --cap-drop=ALL --security-opt=no-new-privileges \
+    -u "$(id -u):$(id -g)" \
+    -e HOME=/tmp -e TMPDIR=/tmp \
+    -e CARGO_HOME=/src/.cache/cargo \
+    -e CARGO_TARGET_DIR=/src/.cache/orfs-rs-target \
+    -e CARGO_TERM_COLOR=never -e RUSTUP_TOOLCHAIN=1.99.0 \
+    -v "${REPO_ROOT}":/src -w /src \
+    "${RUST_IMAGE}" "$@"
+}
+
+# docker_run_rust_fuse runs the rust reference as root with /dev/fuse and
+# CAP_SYS_ADMIN so `orfs mount` works, with caches in /tmp to avoid leaving
+# root-owned files in the repository.
+docker_run_rust_fuse() {
+  docker run --rm \
+    --platform linux/amd64 \
+    --network host ${CAPS_COMMON} \
+    --device /dev/fuse --cap-add SYS_ADMIN \
+    --security-opt apparmor=unconfined --security-opt seccomp=unconfined \
+    -e HOME=/tmp -e TMPDIR=/tmp \
+    -e CARGO_HOME=/tmp/cargo -e CARGO_TARGET_DIR=/tmp/orfs-rs-target \
+    -e CARGO_TERM_COLOR=never -e RUSTUP_TOOLCHAIN=1.99.0 \
+    -v "${REPO_ROOT}":/src -w /src \
+    "${RUST_IMAGE}" "$@"
+}
+
 have_docker() { command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; }
 have_fuse()   { [ -e /dev/fuse ]; }
 

@@ -90,6 +90,7 @@ courts do not need `/dev/fuse`.
 | recovery: capacity / quarantine | `sh scripts/container-go-courts.sh` | `evidence/recovery/capacity.json`, `evidence/recovery/quarantine.json` |
 | crash consistency (real `SIGKILL` mid-append) | `sh scripts/container-go-courts.sh` | `evidence/crash.json` |
 | cross-FS determinism (ext4/xfs/btrfs/tmpfs identical log bytes) | `sh scripts/container-crossfs.sh` | `evidence/correctness/cross-fs.json` |
+| cross-language (Rust reference <-> Go: fixtures, mounts, handoffs, recovery) | `sh scripts/container-crosslang.sh` | `evidence/correctness/crosslang.json` |
 | pjdfstest POSIX conformance suite | `sh scripts/container-pjdfstest.sh` | `evidence/performance/pjdfstest.json` |
 | full pre-PR gate | `sh scripts/container-verify.sh` | per-stage PASS/FAIL/SKIPPED summary |
 
@@ -100,6 +101,27 @@ courts do not need `/dev/fuse`.
 and runs with the full device surface. Both still require `/dev/fuse` to mount
 OrFS, so a host without docker or `/dev/fuse` reports them `SKIPPED`, never a
 false pass.
+
+### Cross-language court
+
+`scripts/container-crosslang.sh` is the Rust↔Go compatibility court. It first
+builds the Rust reference (`orfs` v0.2.0) in a capped `rust:1.99.0-slim-bookworm`
+container via `scripts/container-rust-build.sh`, staging the binary at
+`.cache/orfs-rs/orfs`; that build needs the crates.io registry, so the container
+gets `--network host` and the same caps as every other court. It then builds the
+court image (which carries the Go `orfs` and the read-only `orfsxlang` probe) and
+runs `scripts/crosslang-court.sh` as root with `/dev/fuse` and `CAP_SYS_ADMIN`,
+bind-mounting the Rust binary and `.reference/OrFS/tests/fixtures` read-only.
+
+The court has three honest outcomes. It reports **SKIPPED** (never a pass) if
+there is no docker daemon, no `/dev/fuse`, no Rust reference tree, or the Rust
+build fails. It reports **PASS** when every matrix case is met. It reports
+**FAIL**, with the exact record and field, when the two implementations disagree.
+In this tree it currently reports **FAIL** on one case — the Go writer emits
+`CTIME_UPDATE` (`0x0017`), a mandatory record type the Rust registry does not
+define — and records that, a shared (Go *and* Rust) writable-open recovery
+defect on an in-place torn tail, and the builder-parameter byte differences under
+`findings` in the receipt.
 
 `sh scripts/container-verify.sh --fast` runs the cheap subset. Every stage a host
 cannot run is reported `SKIPPED`, and a `SKIPPED` stage is never counted as a

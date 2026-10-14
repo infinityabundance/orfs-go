@@ -31,9 +31,21 @@ ORFS_GENERATE_FIXTURES=1 go test ./internal/fixture/ -run TestGenerateFixtures
 These fixtures are produced by the deterministic Go builder
 (`internal/fixture`), which encodes the byte layout documented in
 `docs/ON_DISK.md` and `docs/MIGRATION.md` (matching the Rust reference's
-`docs/ON_DISK.md` Part II). Cross-generating the same pair with the Rust `orfs`
-crate and proving byte-for-byte agreement is the tracked follow-up
-(`docs/PROGRESS.md` phase 25).
+`docs/ON_DISK.md` Part II).
+
+The Rust reference ships its own byte-frozen pair at
+`.reference/OrFS/tests/fixtures/{legacy_v0,current_v1}`. The cross-language court
+(`scripts/container-crosslang.sh`, `evidence/correctness/crosslang.json`) builds
+the Rust `orfs` binary and now treats **those** bytes as ground truth: Go must
+replay them to exactly `hello.txt` containing `hello, orfs\n`, and the Go codec
+must re-encode every Rust frame byte-for-byte (both asserted). The court also
+proves the Rust reader accepts these Go fixtures.
+
+The two builders do **not** produce identical bytes for the same fixture: the Go
+builder uses its own volume UUID (`4f52…6531`), segment size (64 MiB),
+timestamps, `TX_BEGIN` advisory `expected_*` values, and record-header inode
+stamps. That divergence is reported in the court receipt, not hidden; it is a
+property of the builders' defaults, not of the codec.
 
 `volume.meta` creation time is fixed at `1_700_000_000` and the UUID is fixed
 (`4f 52 46 53 2d 47 4f 2d 66 69 78 74 75 72 65 31`) so the bytes are

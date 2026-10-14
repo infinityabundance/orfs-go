@@ -1,0 +1,32 @@
+{
+  "schema": "orfs.correctness.crosslang.v1",
+  "generated_by": "scripts/crosslang-court.sh",
+  "result": "FAIL",
+  "go_binary_sha256": "999430723e9a92af2d16292410a1a2cab3d301f4881a8e04ddfe1abab8a8d306",
+  "rust_binary_sha256": "e62b4e86df49a27ad11d07994c8a7cde54064828ad137392153c8a23302c1c6e",
+  "xlang_binary_sha256": "abe59d2c0bb49d0b400c631e737b1ee3d6ed02914c98fd270d469f8e7aec7827",
+  "rust_version": "orfs 0.2.0",
+  "cases": [
+    {"id": "rust_fixtures_read_by_go", "direction": "rust->go", "status": "pass", "detail": "legacy_v0+current_v1: Go verify --deep PASS; replay = /hello.txt mode=0644 size=12 sha256=aec5a165bed9d7d50887dc896e73e3e474a636cc071ae3ac03281ee51cf5feae; Go decode+re-encode is byte-identical to the Rust frames"},
+    {"id": "go_fixtures_read_by_rust", "direction": "go->rust", "status": "pass", "detail": "legacy_v0+current_v1: Rust verify --deep PASS on the Go-generated fixtures"},
+    {"id": "rust_volume_read_by_go", "direction": "rust->go", "status": "pass", "detail": "Rust wrote rename+hardlink+symlink+sparse(1MiB hole)+xattr+dir tree+overwrite; Go verify --deep PASS, mount read-back identical to Rust's, decode/re-encode byte-identical (108 records)"},
+    {"id": "go_volume_read_by_rust_compatible", "direction": "go->rust", "status": "pass", "detail": "Go wrote mkdir+create+write+symlink+rename(new)+truncate+sparse+xattr (no Rust-unknown types); Rust verify --deep PASS, mount read-back identical to Go's"},
+    {"id": "go_volume_read_by_rust_full_ops", "direction": "go->rust", "status": "fail", "detail": "Rust rejected the Go volume: orfs: incompatible on-disk format: unknown mandatory record type 0x0017"},
+    {"id": "alternating_mutations", "direction": "go<->rust", "status": "pass", "detail": "three handoffs (Go write -> Rust verify+read -> Rust mutate -> Go verify+read -> Go mutate -> Rust verify+read); every handoff verified and read back identically"},
+    {"id": "recovery_after_interrupted_write", "direction": "go->rust", "status": "pass", "detail": "torn tail at the committed root: Rust verify --deep PASS at root R=10198, committed prefix byte-identical before/after; Go verify+recover PASS and content preserved"},
+    {"id": "recovery_after_sigkill_handoff", "direction": "rust->go", "status": "pass", "detail": "SIGKILL of the Rust daemon mid-append: Go verify --deep recovered to a committed boundary and the pre-crash committed file survived"},
+    {"id": "recovery_after_inplace_torn_tail", "direction": "rust->go", "status": "pass", "detail": "torn frame inside the committed segment: Rust verify --deep PASS at root R=10198 and a read-only mount read-back matches; Go verify --deep PASS; committed prefix byte-identical"},
+    {"id": "byte_identity", "direction": "byte-identity", "status": "pass", "detail": "Go decode+re-encode is byte-identical to the Rust frames on both Rust fixtures; Go and Rust each read the other's fixtures; Go-vs-Rust builder bytes differ only in identity parameters ( legacy_v0=differs current_v1=differs)"}
+  ],
+  "findings": [
+    {"record": "0x0017 CTIME_UPDATE", "field": "type registry", "detail": "Go emits mandatory record type 0x0017 (CTIME_UPDATE) for hard link / rename-overwrite / chmod / unlink; the Rust reference's registry ends at 0x0015 and refuses an unknown mandatory type, so the Rust reader (verify and mount) rejects the volume"},
+    {"record": "writable open on an in-place torn tail", "field": "recovery open contract", "detail": "After a torn frame inside the committed segment, a writable open (Go recover/mount, or Rust mount) creates a new segment at the committed root but leaves the stale torn bytes in the committed segment; BOTH readers then fail with 'torn record in non-final segment 0'. Go and Rust behave identically, so this is a shared recovery defect, not a Rust<->Go divergence. A read-only open recovers correctly (the assertions above)."},
+    {"record": "fixture bytes (legacy_v0)", "field": "volume identity parameters", "detail": "Go-generated and Rust-generated legacy_v0 segments differ (/src/tests/fixtures/legacy_v0/or.log/0000000000000000.seg /rust-fixtures/legacy_v0/or.log/0000000000000000.seg differ: char 62, line 1). Both are valid and mutually readable, but the builders use different volume UUID, segment size, inode timestamps, TX_BEGIN advisory expected_* fields, and record-header inode stamps; the Go codec is nevertheless byte-exact (roundtrip) on the Rust bytes."},
+    {"record": "fixture bytes (current_v1)", "field": "volume identity parameters", "detail": "Go-generated and Rust-generated current_v1 segments differ (/src/tests/fixtures/current_v1/or.log/0000000000000000.seg /rust-fixtures/current_v1/or.log/0000000000000000.seg differ: char 62, line 1). Both are valid and mutually readable, but the builders use different volume UUID, segment size, inode timestamps, TX_BEGIN advisory expected_* fields, and record-header inode stamps; the Go codec is nevertheless byte-exact (roundtrip) on the Rust bytes."}
+  ],
+  "byte_identity": {
+    "go_codec_roundtrip_rust_fixtures": true,
+    "go_fixture_and_rust_fixture_mutually_readable": true,
+    "go_vs_rust_fixture_bytes": "differs"
+  }
+}
