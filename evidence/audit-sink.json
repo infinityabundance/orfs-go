@@ -1,0 +1,1904 @@
+{
+  "schema": "orfs.audit-sink.v1",
+  "generated_at_unix": 1792010492,
+  "volume": "/tmp/tmp.dtGaCcc9zf/vol",
+  "config": {
+    "corpus": "80/20 hot/cold skew",
+    "event_shape": "{\"user\":...,\"action\":...,\"resource\":...,\"time\":...}",
+    "group_commit": true,
+    "mount": "FUSE (go-fuse, direct mount)",
+    "rate_limit_records_per_sec": 150,
+    "record_bytes": 4096,
+    "seed": 1,
+    "segment_size_bytes": 4194304,
+    "single_writer": true,
+    "transport": "f0",
+    "workload": "append-only audit-log sink (JSON events, WORM)"
+  },
+  "workload": {
+    "schema": "orfs.audit-sink.sink.v1",
+    "file": "/tmp/tmp.dtGaCcc9zf/mnt/audit.log",
+    "records": 1500,
+    "record_bytes": 4096,
+    "appended_bytes": 6144000,
+    "logical_bytes": 6144000,
+    "wall_seconds": 10.017900692,
+    "throughput_records_per_sec": 149.73196941329792,
+    "throughput_bytes_per_sec": 613302.1467168683,
+    "configured_rate_records_per_sec": 150,
+    "append_fsync_p50_ns": 2321736,
+    "append_fsync_p99_ns": 3582361,
+    "append_fsync_mean_ns": 2392188,
+    "corpus": "80/20 hot/cold skew (hot: 8 users / 6 actions / 8 resources)",
+    "seed": 1,
+    "tail": {
+      "method": "inotify",
+      "using_inotify": true,
+      "inotify_events": 3002,
+      "inotify_fallback": false,
+      "reads": 1516,
+      "growth_observations": 1500,
+      "records_observed": 1500,
+      "bytes_read": 6144000,
+      "parse_failures": 0,
+      "lag_samples": 1500,
+      "lag_p50_ns": 2390575,
+      "lag_p99_ns": 6522562,
+      "lag_mean_ns": 2517147,
+      "monotonic": true,
+      "sample": [
+        "{\"user\":\"auditd\",\"action\":\"chmod\",\"resource\":\"/var/lib/kubelet/config.yaml\",\"time\":\"2026-10-14T20:41:13.226233268Z\"}",
+        "{\"user\":\"chronyd\",\"action\":\"login\",\"resource\":\"/etc/pam.d/sshd\",\"time\":\"2026-10-14T20:41:13.23371423Z\"}",
+        "{\"user\":\"systemd-journald\",\"action\":\"write\",\"resource\":\"/etc/ssh/sshd_config\",\"time\":\"2026-10-14T20:41:13.24016091Z\"}",
+        "{\"user\":\"kubelet\",\"action\":\"login\",\"resource\":\"/var/log/audit/audit.log\",\"time\":\"2026-10-14T20:41:13.246590448Z\"}",
+        "{\"user\":\"sshd\",\"action\":\"exec\",\"resource\":\"/var/lib/data/obj-002039\",\"time\":\"2026-10-14T20:41:13.252933765Z\"}",
+        "{\"user\":\"root\",\"action\":\"chmod\",\"resource\":\"/var/lib/data/obj-000332\",\"time\":\"2026-10-14T20:41:13.260350287Z\"}",
+        "{\"user\":\"auditd\",\"action\":\"login\",\"resource\":\"/var/log/audit/audit.log\",\"time\":\"2026-10-14T20:41:13.26671829Z\"}",
+        "{\"user\":\"sshd\",\"action\":\"delete\",\"resource\":\"/root/.ssh/authorized_keys\",\"time\":\"2026-10-14T20:41:13.273060846Z\"}"
+      ]
+    }
+  },
+  "records": 1500,
+  "bytes": 6144000,
+  "bytes_per_sec": 613302.1467168683,
+  "records_per_sec": 149.73196941329792,
+  "tail_lag_p50_ns": 2390575,
+  "tail_lag_p99_ns": 6522562,
+  "tail_lag_p50_seconds": 0.002390575,
+  "tail_lag_p99_seconds": 0.006522562,
+  "tail_method": "inotify",
+  "growth_monotonic": true,
+  "growt_monotonic": true,
+  "tail": {
+    "method": "inotify",
+    "using_inotify": true,
+    "inotify_events": 3002,
+    "inotify_fallback": false,
+    "reads": 1516,
+    "growth_observations": 1500,
+    "records_observed": 1500,
+    "bytes_read": 6144000,
+    "parse_failures": 0,
+    "lag_samples": 1500,
+    "lag_p50_ns": 2390575,
+    "lag_p99_ns": 6522562,
+    "lag_mean_ns": 2517147,
+    "monotonic": true,
+    "sample": [
+      "{\"user\":\"auditd\",\"action\":\"chmod\",\"resource\":\"/var/lib/kubelet/config.yaml\",\"time\":\"2026-10-14T20:41:13.226233268Z\"}",
+      "{\"user\":\"chronyd\",\"action\":\"login\",\"resource\":\"/etc/pam.d/sshd\",\"time\":\"2026-10-14T20:41:13.23371423Z\"}",
+      "{\"user\":\"systemd-journald\",\"action\":\"write\",\"resource\":\"/etc/ssh/sshd_config\",\"time\":\"2026-10-14T20:41:13.24016091Z\"}",
+      "{\"user\":\"kubelet\",\"action\":\"login\",\"resource\":\"/var/log/audit/audit.log\",\"time\":\"2026-10-14T20:41:13.246590448Z\"}",
+      "{\"user\":\"sshd\",\"action\":\"exec\",\"resource\":\"/var/lib/data/obj-002039\",\"time\":\"2026-10-14T20:41:13.252933765Z\"}",
+      "{\"user\":\"root\",\"action\":\"chmod\",\"resource\":\"/var/lib/data/obj-000332\",\"time\":\"2026-10-14T20:41:13.260350287Z\"}",
+      "{\"user\":\"auditd\",\"action\":\"login\",\"resource\":\"/var/log/audit/audit.log\",\"time\":\"2026-10-14T20:41:13.26671829Z\"}",
+      "{\"user\":\"sshd\",\"action\":\"delete\",\"resource\":\"/root/.ssh/authorized_keys\",\"time\":\"2026-10-14T20:41:13.273060846Z\"}"
+    ]
+  },
+  "tail_view_sample": [
+    "{\"user\":\"auditd\",\"action\":\"chmod\",\"resource\":\"/var/lib/kubelet/config.yaml\",\"time\":\"2026-10-14T20:41:13.226233268Z\"}",
+    "{\"user\":\"chronyd\",\"action\":\"login\",\"resource\":\"/etc/pam.d/sshd\",\"time\":\"2026-10-14T20:41:13.23371423Z\"}",
+    "{\"user\":\"systemd-journald\",\"action\":\"write\",\"resource\":\"/etc/ssh/sshd_config\",\"time\":\"2026-10-14T20:41:13.24016091Z\"}",
+    "{\"user\":\"kubelet\",\"action\":\"login\",\"resource\":\"/var/log/audit/audit.log\",\"time\":\"2026-10-14T20:41:13.246590448Z\"}",
+    "{\"user\":\"sshd\",\"action\":\"exec\",\"resource\":\"/var/lib/data/obj-002039\",\"time\":\"2026-10-14T20:41:13.252933765Z\"}"
+  ],
+  "verify_deep": {
+    "passed": true,
+    "iterations": 120,
+    "source": "crash-consistency court (SIGKILL mid-append) + mounted immutability proof",
+    "sink_volume_passed": true,
+    "failures": 0
+  },
+  "verify_deep_report": {
+    "volume": "/tmp/tmp.dtGaCcc9zf/vol",
+    "log_format_version": 1,
+    "uuid": "3a08771f06f84efcb5a14a7e24a4f840",
+    "committed_root": 17770903,
+    "committed_records": 6338,
+    "transaction_count": 1584,
+    "segments": 5,
+    "physical_bytes": 17770903,
+    "tail_abandoned_bytes": 0,
+    "checks": [
+      {
+        "name": "framing",
+        "ok": true,
+        "detail": "every committed record framed and checksummed"
+      },
+      {
+        "name": "transactions",
+        "ok": true,
+        "detail": "every committed bracket validated"
+      },
+      {
+        "name": "watermark",
+        "ok": true
+      },
+      {
+        "name": "replay",
+        "ok": true,
+        "detail": "2 inode(s), 1 dentr(ies)"
+      }
+    ],
+    "deep": true,
+    "inodes": 2,
+    "dentries": 1
+  },
+  "quarantine_total": 0,
+  "breach_total": 0,
+  "append_fsync_seconds": {
+    "p50_seconds": 0.002321736,
+    "p99_seconds": 0.003582361,
+    "mean_seconds": 0.002392188,
+    "observed": true
+  },
+  "fsync_latency_seconds": {
+    "p50_seconds": 0.000001,
+    "p99_seconds": 0.000002,
+    "count": 1584,
+    "observed": true
+  },
+  "fsync_tax_vs_fuse_tax": {
+    "fuse_tax_append_p50_seconds": 0.002321736,
+    "fuse_tax_append_p99_seconds": 0.003582361,
+    "barrier_p50_seconds": 0.000001,
+    "barrier_p99_seconds": 0.000002,
+    "note": "The end-to-end append (client write + fsync) is the FUSE tax: the FUSE round trip, transaction framing, watermark write, and index replay. The durability barrier itself (orfs_fsync_latency_seconds) is sub-microsecond here. Do not read the barrier as the append cost."
+  },
+  "amplification_ratio": 1.0439363246473472,
+  "bytes_detail": {
+    "logical_bytes": 17022976,
+    "physical_bytes": 17770939,
+    "manifested_bytes": 17023630,
+    "authoritative_root_bytes": 17770903,
+    "amplification_ratio": 1.0439363246473472
+  },
+  "manifest": {
+    "schema": "orfs.manifest.v1",
+    "inode": 2,
+    "inode_version": 3168,
+    "root": 17770903,
+    "logical_len": 17022976,
+    "physical_bytes": 17023272,
+    "body_blake3": "e0883189d2c0004bea9a2e4f6a07cd4d351d5637cbb8716e9236bbcddef885f5",
+    "logical_blake3": "f5b5348669ae52705464713343097ad82aaf70aa7ed466a1b20ce20280b98a46",
+    "ekbloom_version": "ekbloom-go"
+  },
+  "crash_court": {
+    "schema": "orfs.performance.crash.v1",
+    "method": "SIGKILL the cmd/orfscrashtest writer mid-append, then reopen read-write (quarantining the abandoned tail) and verify the committed prefix is unchanged",
+    "iterations": 120,
+    "requested_iterations": 120,
+    "kills_with_tail": 38,
+    "kills_without_tail": 82,
+    "torn_tails": 0,
+    "uncommitted_tails": 38,
+    "quarantined_count": 38,
+    "truncations": 0,
+    "prefix_mismatches": 0,
+    "recover_failures": 0,
+    "verify_passes": 120,
+    "continued_commits": 120,
+    "segment_size": 42338,
+    "records_per_tx": 256,
+    "tx_bytes": 42236,
+    "wall_seconds": 1.104043497,
+    "iterations_sample": [
+      {
+        "i": 0,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 1,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 211282,
+        "prefix_bytes": 211282,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 2,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 3,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 253518,
+        "prefix_bytes": 253518,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 4,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 5,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 36840,
+        "quarantined": true,
+        "quarantined_bytes": 36840,
+        "recovered_root": 549170,
+        "prefix_bytes": 549170,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 6,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 253518,
+        "prefix_bytes": 253518,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 7,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 211282,
+        "prefix_bytes": 211282,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 8,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 591406,
+        "prefix_bytes": 591406,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 9,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 19620,
+        "quarantined": true,
+        "quarantined_bytes": 19620,
+        "recovered_root": 211282,
+        "prefix_bytes": 211282,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 10,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 22080,
+        "quarantined": true,
+        "quarantined_bytes": 22080,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 11,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 12,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 13552,
+        "quarantined": true,
+        "quarantined_bytes": 13552,
+        "recovered_root": 591406,
+        "prefix_bytes": 591406,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 13,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 14,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 253518,
+        "prefix_bytes": 253518,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 15,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 16,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 211282,
+        "prefix_bytes": 211282,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 17,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 18,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 26180,
+        "quarantined": true,
+        "quarantined_bytes": 26180,
+        "recovered_root": 211282,
+        "prefix_bytes": 211282,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 19,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 20,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 21,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 22,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 23,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 24,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 29952,
+        "quarantined": true,
+        "quarantined_bytes": 29952,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 25,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 633642,
+        "prefix_bytes": 633642,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 26,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 549170,
+        "prefix_bytes": 549170,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 27,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 169046,
+        "prefix_bytes": 169046,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 28,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 253518,
+        "prefix_bytes": 253518,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 29,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 33724,
+        "quarantined": true,
+        "quarantined_bytes": 33724,
+        "recovered_root": 506934,
+        "prefix_bytes": 506934,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 30,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 31,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 5188,
+        "quarantined": true,
+        "quarantined_bytes": 5188,
+        "recovered_root": 591406,
+        "prefix_bytes": 591406,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 32,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 37332,
+        "quarantined": true,
+        "quarantined_bytes": 37332,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 33,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 34,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 3712,
+        "quarantined": true,
+        "quarantined_bytes": 3712,
+        "recovered_root": 549170,
+        "prefix_bytes": 549170,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 35,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 253518,
+        "prefix_bytes": 253518,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 36,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 506934,
+        "prefix_bytes": 506934,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 37,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 38,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 39,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 40,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 41,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 21916,
+        "quarantined": true,
+        "quarantined_bytes": 21916,
+        "recovered_root": 549170,
+        "prefix_bytes": 549170,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 42,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 506934,
+        "prefix_bytes": 506934,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 43,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 169046,
+        "prefix_bytes": 169046,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 44,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 253518,
+        "prefix_bytes": 253518,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 45,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 253518,
+        "prefix_bytes": 253518,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 46,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 47,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 48,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 37332,
+        "quarantined": true,
+        "quarantined_bytes": 37332,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 49,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 18964,
+        "quarantined": true,
+        "quarantined_bytes": 18964,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 50,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 633642,
+        "prefix_bytes": 633642,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 51,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 22408,
+        "quarantined": true,
+        "quarantined_bytes": 22408,
+        "recovered_root": 380226,
+        "prefix_bytes": 380226,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 52,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 53,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 54,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 55,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 126810,
+        "prefix_bytes": 126810,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 56,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 253518,
+        "prefix_bytes": 253518,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 57,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 3548,
+        "quarantined": true,
+        "quarantined_bytes": 3548,
+        "recovered_root": 549170,
+        "prefix_bytes": 549170,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 58,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 38152,
+        "quarantined": true,
+        "quarantined_bytes": 38152,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 59,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 60,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 61,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 62,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 63,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 64,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 211282,
+        "prefix_bytes": 211282,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 65,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 12404,
+        "quarantined": true,
+        "quarantined_bytes": 12404,
+        "recovered_root": 169046,
+        "prefix_bytes": 169046,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 66,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 253518,
+        "prefix_bytes": 253518,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 67,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 33068,
+        "quarantined": true,
+        "quarantined_bytes": 33068,
+        "recovered_root": 591406,
+        "prefix_bytes": 591406,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 68,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 549170,
+        "prefix_bytes": 549170,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 69,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 70,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 5024,
+        "quarantined": true,
+        "quarantined_bytes": 5024,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 71,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 72,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 1252,
+        "quarantined": true,
+        "quarantined_bytes": 1252,
+        "recovered_root": 253518,
+        "prefix_bytes": 253518,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 73,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 17816,
+        "quarantined": true,
+        "quarantined_bytes": 17816,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 74,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 5680,
+        "quarantined": true,
+        "quarantined_bytes": 5680,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 75,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 268,
+        "quarantined": true,
+        "quarantined_bytes": 268,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 76,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 77,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 633642,
+        "prefix_bytes": 633642,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 78,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 8140,
+        "quarantined": true,
+        "quarantined_bytes": 8140,
+        "recovered_root": 211282,
+        "prefix_bytes": 211282,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 79,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 80,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 6828,
+        "quarantined": true,
+        "quarantined_bytes": 6828,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 81,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 253518,
+        "prefix_bytes": 253518,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 82,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 83,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 8140,
+        "quarantined": true,
+        "quarantined_bytes": 8140,
+        "recovered_root": 591406,
+        "prefix_bytes": 591406,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 84,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 85,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 86,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 4204,
+        "quarantined": true,
+        "quarantined_bytes": 4204,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 87,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 28968,
+        "quarantined": true,
+        "quarantined_bytes": 28968,
+        "recovered_root": 84574,
+        "prefix_bytes": 84574,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 88,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 11748,
+        "quarantined": true,
+        "quarantined_bytes": 11748,
+        "recovered_root": 253518,
+        "prefix_bytes": 253518,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 89,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 33396,
+        "quarantined": true,
+        "quarantined_bytes": 33396,
+        "recovered_root": 591406,
+        "prefix_bytes": 591406,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 90,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 633642,
+        "prefix_bytes": 633642,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 91,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 92,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 633642,
+        "prefix_bytes": 633642,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 93,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 591406,
+        "prefix_bytes": 591406,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 94,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 95,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 96,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 97,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 98,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 6172,
+        "quarantined": true,
+        "quarantined_bytes": 6172,
+        "recovered_root": 549170,
+        "prefix_bytes": 549170,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 99,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 100,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 633642,
+        "prefix_bytes": 633642,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 101,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 102,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 103,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 39792,
+        "quarantined": true,
+        "quarantined_bytes": 39792,
+        "recovered_root": 591406,
+        "prefix_bytes": 591406,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 104,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 105,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 1580,
+        "quarantined": true,
+        "quarantined_bytes": 1580,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 106,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 107,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 108,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 211282,
+        "prefix_bytes": 211282,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 109,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 24704,
+        "quarantined": true,
+        "quarantined_bytes": 24704,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 110,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 16504,
+        "quarantined": true,
+        "quarantined_bytes": 16504,
+        "recovered_root": 253518,
+        "prefix_bytes": 253518,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 111,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 112,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 113,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 295754,
+        "prefix_bytes": 295754,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 114,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 2564,
+        "quarantined": true,
+        "quarantined_bytes": 2564,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 115,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 20440,
+        "quarantined": true,
+        "quarantined_bytes": 20440,
+        "recovered_root": 549170,
+        "prefix_bytes": 549170,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 116,
+        "tail": true,
+        "tail_kind": "uncommitted",
+        "tail_abandoned_bytes": 5188,
+        "quarantined": true,
+        "quarantined_bytes": 5188,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 117,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 591406,
+        "prefix_bytes": 591406,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 118,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      },
+      {
+        "i": 119,
+        "tail": false,
+        "quarantined": false,
+        "recovered_root": 337990,
+        "prefix_bytes": 337990,
+        "prefix_identical": true,
+        "root_is_boundary": true,
+        "verify_passed": true,
+        "continued": true
+      }
+    ],
+    "note": "real SIGKILL of the cmd/orfscrashtest writer at a random point mid-append, 120 iterations. The court waits for the writer's first committed transaction (a READY line) and then sleeps a random interval before SIGKILLing, so the crash lands inside an in-progress append. The volume is created with a segment size (genesis frame + one 256-record transaction = 42338 bytes) chosen so every committed transaction ends exactly at a segment boundary, so each append begins in a fresh trailing segment whose id is the recovered committed root; a kill mid-append therefore leaves the abandoned tail in a movable (quarantinable) segment. 38 kills left a tail (0 torn, 38 uncommitted), 38 were quarantined (MOVED, never truncated), and 82 recovered with no tail (the kill landed after a transaction's bytes were complete, e.g. during its fsync barrier). This models a process kill, not power loss: bytes in the page cache survive. Truncations, prefix mismatches and recovery failures are all zero; every recovered volume passed verify --deep and accepted one further committed transaction at the recovered root."
+  },
+  "mounted_immutability": {
+    "schema": "orfs.audit-sink.mounted-immutability.v1",
+    "kills": 8,
+    "kill_record_bytes": 262144,
+    "truncations": 0,
+    "prefix_mismatches": 0,
+    "growth_monotonic": true,
+    "bytes_before": 6144000,
+    "bytes_after": 17022976,
+    "verify_deep_passed": true,
+    "note": "SIGKILL of the FUSE-client audit writer mid-append, repeated 8 times. Each client append is one acknowledged authoritative transaction: the committed prefix stayed byte-identical and the file only grew, so no committed byte was lost or rewritten. verify --deep on the backing passes after the storm."
+  },
+  "prometheus": "# HELP orfs_physical_bytes Authoritative retained bytes on the backing: committed or.log/*.seg plus commit.watermark (excludes the derived .or_bloom/).\n# TYPE orfs_physical_bytes gauge\norfs_physical_bytes 17770939\n\n# HELP orfs_authoritative_bytes The committed root R: the end offset of the authoritative logical byte stream.\n# TYPE orfs_authoritative_bytes gauge\norfs_authoritative_bytes 17770903\n\n# HELP orfs_logical_bytes Bytes of live regular-file content in the namespace (the amplification denominator).\n# TYPE orfs_logical_bytes gauge\norfs_logical_bytes 17022976\n\n# HELP orfs_manifested_bytes Bytes under the derived .or_bloom/ manifestation directory.\n# TYPE orfs_manifested_bytes gauge\norfs_manifested_bytes 17023630\n\n# HELP orfs_amplification_ratio Authoritative committed root divided by logical regular-file bytes; \u003e= 1 is the framing/retention tax of append-only history. Reported as 0 when the volume holds no regular-file bytes.\n# TYPE orfs_amplification_ratio gauge\norfs_amplification_ratio 1.0439363246473472\n\n# HELP orfs_degraded 1 when the volume has latched read-only (a capacity degradation), else 0.\n# TYPE orfs_degraded gauge\norfs_degraded 0\n\n# HELP orfs_breach_total Capacity-guard admission refusals by reason; a refusal denies growth before the first byte (Law I). The read-only latch is orfs_degraded.\n# TYPE orfs_breach_total counter\norfs_breach_total{reason=\"backing_reserve\"} 0\norfs_breach_total{reason=\"authoritative\"} 0\norfs_breach_total{reason=\"hard_quota\"} 0\n\n# HELP orfs_quarantine_total Retained abandoned-tail segments/bytes moved into or.log/quarantine/ (recovery moves, never truncates).\n# TYPE orfs_quarantine_total counter\norfs_quarantine_total{unit=\"segments\"} 0\norfs_quarantine_total{unit=\"bytes\"} 0\n\n# HELP orfs_verify_deep_failures Failed checks from the most recent verify --deep pass.\n# TYPE orfs_verify_deep_failures gauge\norfs_verify_deep_failures 0\n\n# HELP orfs_fsync_latency_seconds Durability-barrier (fsync) latency; quantiles are a bounded fixed-bucket estimate. Source: persisted snapshot from the last mounted run.\n# TYPE orfs_fsync_latency_seconds summary\norfs_fsync_latency_seconds{quantile=\"0.5\"} 1e-06\norfs_fsync_latency_seconds{quantile=\"0.99\"} 2e-06\norfs_fsync_latency_seconds_sum 0.001445080000000002\norfs_fsync_latency_seconds_count 1584\n\n# HELP orfs_group_commit_batch_size Group-commit batch size in transactions per barrier. Source: persisted snapshot from the last mounted run.\n# TYPE orfs_group_commit_batch_size gauge\norfs_group_commit_batch_size{stat=\"last\"} 1\norfs_group_commit_batch_size{stat=\"avg\"} 1\n\n# HELP orfs_metrics_snapshot_timestamp_seconds Unix time the persisted runtime snapshot was captured.\n# TYPE orfs_metrics_snapshot_timestamp_seconds gauge\norfs_metrics_snapshot_timestamp_seconds 1792010485\n",
+  "prometheus_json": {
+    "schema": "orfs.metrics.v1",
+    "families": [
+      {
+        "name": "orfs_physical_bytes",
+        "help": "Authoritative retained bytes on the backing: committed or.log/*.seg plus commit.watermark (excludes the derived .or_bloom/).",
+        "type": "gauge",
+        "samples": [
+          {
+            "value": 17770939
+          }
+        ]
+      },
+      {
+        "name": "orfs_authoritative_bytes",
+        "help": "The committed root R: the end offset of the authoritative logical byte stream.",
+        "type": "gauge",
+        "samples": [
+          {
+            "value": 17770903
+          }
+        ]
+      },
+      {
+        "name": "orfs_logical_bytes",
+        "help": "Bytes of live regular-file content in the namespace (the amplification denominator).",
+        "type": "gauge",
+        "samples": [
+          {
+            "value": 17022976
+          }
+        ]
+      },
+      {
+        "name": "orfs_manifested_bytes",
+        "help": "Bytes under the derived .or_bloom/ manifestation directory.",
+        "type": "gauge",
+        "samples": [
+          {
+            "value": 17023630
+          }
+        ]
+      },
+      {
+        "name": "orfs_amplification_ratio",
+        "help": "Authoritative committed root divided by logical regular-file bytes; \u003e= 1 is the framing/retention tax of append-only history. Reported as 0 when the volume holds no regular-file bytes.",
+        "type": "gauge",
+        "samples": [
+          {
+            "value": 1.0439363246473472
+          }
+        ]
+      },
+      {
+        "name": "orfs_degraded",
+        "help": "1 when the volume has latched read-only (a capacity degradation), else 0.",
+        "type": "gauge",
+        "samples": [
+          {
+            "value": 0
+          }
+        ]
+      },
+      {
+        "name": "orfs_breach_total",
+        "help": "Capacity-guard admission refusals by reason; a refusal denies growth before the first byte (Law I). The read-only latch is orfs_degraded.",
+        "type": "counter",
+        "samples": [
+          {
+            "labels": [
+              {
+                "name": "reason",
+                "value": "backing_reserve"
+              }
+            ],
+            "value": 0
+          },
+          {
+            "labels": [
+              {
+                "name": "reason",
+                "value": "authoritative"
+              }
+            ],
+            "value": 0
+          },
+          {
+            "labels": [
+              {
+                "name": "reason",
+                "value": "hard_quota"
+              }
+            ],
+            "value": 0
+          }
+        ]
+      },
+      {
+        "name": "orfs_quarantine_total",
+        "help": "Retained abandoned-tail segments/bytes moved into or.log/quarantine/ (recovery moves, never truncates).",
+        "type": "counter",
+        "samples": [
+          {
+            "labels": [
+              {
+                "name": "unit",
+                "value": "segments"
+              }
+            ],
+            "value": 0
+          },
+          {
+            "labels": [
+              {
+                "name": "unit",
+                "value": "bytes"
+              }
+            ],
+            "value": 0
+          }
+        ]
+      },
+      {
+        "name": "orfs_verify_deep_failures",
+        "help": "Failed checks from the most recent verify --deep pass.",
+        "type": "gauge",
+        "samples": [
+          {
+            "value": 0
+          }
+        ]
+      },
+      {
+        "name": "orfs_fsync_latency_seconds",
+        "help": "Durability-barrier (fsync) latency; quantiles are a bounded fixed-bucket estimate. Source: persisted snapshot from the last mounted run.",
+        "type": "summary",
+        "samples": [
+          {
+            "labels": [
+              {
+                "name": "quantile",
+                "value": "0.5"
+              }
+            ],
+            "value": 0.000001
+          },
+          {
+            "labels": [
+              {
+                "name": "quantile",
+                "value": "0.99"
+              }
+            ],
+            "value": 0.000002
+          },
+          {
+            "name": "orfs_fsync_latency_seconds_sum",
+            "value": 0.001445080000000002
+          },
+          {
+            "name": "orfs_fsync_latency_seconds_count",
+            "value": 1584
+          }
+        ]
+      },
+      {
+        "name": "orfs_group_commit_batch_size",
+        "help": "Group-commit batch size in transactions per barrier. Source: persisted snapshot from the last mounted run.",
+        "type": "gauge",
+        "samples": [
+          {
+            "labels": [
+              {
+                "name": "stat",
+                "value": "last"
+              }
+            ],
+            "value": 1
+          },
+          {
+            "labels": [
+              {
+                "name": "stat",
+                "value": "avg"
+              }
+            ],
+            "value": 1
+          }
+        ]
+      },
+      {
+        "name": "orfs_metrics_snapshot_timestamp_seconds",
+        "help": "Unix time the persisted runtime snapshot was captured.",
+        "type": "gauge",
+        "samples": [
+          {
+            "value": 1792010485
+          }
+        ]
+      }
+    ]
+  },
+  "doctor_capacity": {
+    "schema": "orfs.capacity.report.v1",
+    "volume": "/tmp/tmp.dtGaCcc9zf/vol",
+    "physical_bytes": 17770939,
+    "segment_count": 5,
+    "authoritative_bytes": 17770903,
+    "free_bytes": 877682688,
+    "mount_point": "/",
+    "device": "overlay",
+    "filesystem": "overlay",
+    "reserve_bytes": 0,
+    "headroom_bytes": 877682688,
+    "transaction_count": 1584,
+    "bytes_per_transaction": 131544,
+    "estimated_transactions_remaining": 6672,
+    "verdict": "ok",
+    "degraded": false,
+    "policy": {
+      "reserve_bytes": 0,
+      "authoritative_capacity_bytes": null,
+      "soft_quota_bytes": null,
+      "hard_quota_bytes": null
+    },
+    "manifested_bytes": 17023630,
+    "logical_bytes": 17022976,
+    "amplification_ratio": 1.0439363246473472,
+    "breach_total": 0,
+    "quarantine_segments": 0,
+    "quarantine_bytes": 0,
+    "fsync_p50_seconds": 0.000001,
+    "fsync_p99_seconds": 0.000002,
+    "group_commit_batch_last": 1,
+    "group_commit_batch_avg": 1,
+    "metrics_runtime_source": "snapshot"
+  },
+  "notes": [
+    "This is an append-only WORM audit-log sink, not a general-purpose filesystem: JSON events are appended and fsynced, never rewritten, and readers tail the growing file.",
+    "The event corpus is a seeded 80/20 hot/cold skew (a handful of users/actions/resources dominate), not a uniform draw, so the tail and index behave like realistic audit traffic.",
+    "Records are fixed-length JSONL lines padded to the record size, so one client write is one FUSE write and one authoritative transaction (the mounted size equals the appended bytes).",
+    "The durability barrier itself (orfs_fsync_latency_seconds) is sub-microsecond; the ~4 ms end-to-end append is the FUSE tax — the round trip, framing, watermark, and index replay. Both are published; neither is presented as the other.",
+    "quarantine_total and breach_total are the audit sink volume's own counters and must be 0: a clean sink run abandons no tail and is never refused growth. The crash-consistency court separately MOVES uncommitted abandoned tails into quarantine (never truncates) — that is not data loss and is not the sink volume's counter.",
+    "The tail reader reports whether it actually observed inotify events (method=inotify) or fell back to polling (method=poll); the receipt never claims inotify when it was not used.",
+    "The append-to-observation tail lag is dominated by the same FUSE publish round trip the append pays: a reader observes a record only after the writer's transaction is durable, and the FUSE read round trip adds to it. It sits far above the sub-microsecond barrier, which is why the barrier is never presented as the observed latency.",
+    "manifested_bytes is the derived .or_bloom/ plane, produced by an explicit `orfs manifest` pass; it is reported separately and is not part of the authoritative log."
+  ]
+}

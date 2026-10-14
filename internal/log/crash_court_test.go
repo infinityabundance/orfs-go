@@ -508,15 +508,24 @@ func writeCrashEvidence(t *testing.T, rec crashReceipt) {
 	if err != nil {
 		t.Fatalf("marshal evidence: %v", err)
 	}
-	dir := filepath.Join("..", "..", "evidence")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	path := crashEvidencePath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir evidence: %v", err)
 	}
-	path := filepath.Join(dir, "crash.json")
 	if err := os.WriteFile(path, append(blob, '\n'), 0o644); err != nil {
 		t.Fatalf("write evidence: %v", err)
 	}
 	t.Logf("wrote %s", path)
+}
+
+// crashEvidencePath is where the receipt is written. It defaults to the
+// repository's evidence/crash.json, but ORFS_CRASH_EVIDENCE redirects it so a
+// court can run this court without clobbering the published receipt.
+func crashEvidencePath() string {
+	if p := os.Getenv("ORFS_CRASH_EVIDENCE"); p != "" {
+		return p
+	}
+	return filepath.Join("..", "..", "evidence", "crash.json")
 }
 
 func envInt(key string, def int) int {

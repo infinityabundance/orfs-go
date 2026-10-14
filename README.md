@@ -49,6 +49,7 @@ Working today:
 | pjdfstest court | implemented — **8798/8798 passing** (`docs/LIMITATIONS.md` §11) |
 | Transport (`--transport f0 \| f0-single \| fuse-uring`) with a loud F2 fallback; F2 (`io_uring`) probed live — the kernel supports it, go-fuse exposes none (see `docs/TRANSPORT.md`) | implemented — `evidence/performance/transport.json` |
 | Operator metrics (`orfs metrics`, Prometheus text + `--json`) and an append-only WORM case study | implemented — `evidence/worm-case-study.json`, `docs/WORM.md` |
+| Audit-log sink: a `cmd/orfsaudit` JSON-event writer with a skewed 80/20 corpus, an inotify tail reader (poll fallback), a mounted immutability proof, Prometheus→Grafana, and the production story | implemented — `evidence/audit-sink.json`, `docs/AUDIT-SINK.md` |
 
 Honest non-claims: the **image pixel-surface pyramid is rejected, not merely
 unimplemented** (`docs/REJECTED.md`). No performance superiority is claimed; the
@@ -82,6 +83,7 @@ receipts are in [`docs/BENCH.md`](docs/BENCH.md); reproduction in
 [`TRANSPORT.md`](docs/TRANSPORT.md) (F0/F1/F2, the measured F0 comparison, and why F2 is not reachable here),
 [`OPERATIONS.md`](docs/OPERATIONS.md) (growth, recovery, capacity),
 [`WORM.md`](docs/WORM.md) (the append-only WORM case study and the metrics surface),
+[`AUDIT-SINK.md`](docs/AUDIT-SINK.md) (mounting OrFS as an append-only audit-log sink),
 [`SECURITY.md`](docs/SECURITY.md), [`LIMITATIONS.md`](docs/LIMITATIONS.md),
 [`REJECTED.md`](docs/REJECTED.md), [`PROGRESS.md`](docs/PROGRESS.md).
 

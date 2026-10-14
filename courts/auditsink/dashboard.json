@@ -1,0 +1,143 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "description": "(a) Authoritative retained bytes (or.log/*.seg + commit.watermark), the derived manifested plane (.or_bloom/), the logical regular-file bytes, and the amplification ratio (committed root R / logical). All are emitted by `orfs metrics`.",
+      "fieldConfig": {
+        "defaults": { "unit": "bytes" },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "amplification (R / logical)" },
+            "properties": [
+              { "id": "unit", "value": "short" },
+              { "id": "decimals", "value": 3 },
+              { "id": "custom.axisPlacement", "value": "right" }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "orfs_physical_bytes", "legendFormat": "physical (authoritative retained)", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "orfs_manifested_bytes", "legendFormat": "manifested (.or_bloom)", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "orfs_logical_bytes", "legendFormat": "logical file bytes", "refId": "C" },
+        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "orfs_amplification_ratio", "legendFormat": "amplification (R / logical)", "refId": "D" }
+      ],
+      "title": "(a) physical / manifested / logical bytes + amplification",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "description": "(b) Durability-barrier (fsync) latency p50/p99. orfs_fsync_latency_seconds is a Prometheus SUMMARY (not a histogram), so histogram_quantile() does not apply; read the summary's own quantile series. Values are a bounded fixed-bucket estimate (a reported value is the bucket's upper edge). Source: the persisted per-run snapshot.",
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 9 }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+      "id": 2,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "single" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "orfs_fsync_latency_seconds{quantile=\"0.5\"}", "legendFormat": "p50 (barrier)", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "orfs_fsync_latency_seconds{quantile=\"0.99\"}", "legendFormat": "p99 (barrier)", "refId": "B" }
+      ],
+      "title": "(b) durability barrier p50 / p99",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "description": "(c) Group-commit batch size in transactions per barrier; last and average. A single sequential audit writer yields 1/1 (the committer is exercised but does not batch).",
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 2 }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+      "id": 3,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "single" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "orfs_group_commit_batch_size{stat=\"last\"}", "legendFormat": "last batch", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "orfs_group_commit_batch_size{stat=\"avg\"}", "legendFormat": "avg batch", "refId": "B" }
+      ],
+      "title": "(c) group-commit batch size",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "description": "(d) Per-second rate of capacity-guard admission refusals (orfs_breach_total by reason; a refusal denies growth before the first byte, Law I) and of retained abandoned-tail moves into quarantine (orfs_quarantine_total by unit; recovery MOVES, never truncates). Both are counters, so rate() is valid; a healthy audit sink is flat at zero.",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 4,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "single" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "rate(orfs_breach_total[5m])", "legendFormat": "breach/s {{reason}}", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "rate(orfs_quarantine_total[5m])", "legendFormat": "quarantine/s {{unit}}", "refId": "B" }
+      ],
+      "title": "(d) breach & quarantine rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "description": "(e) Failed checks from the most recent `orfs metrics` verify --deep pass. Must be 0 for a healthy audit volume.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 5,
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "orfs_verify_deep_failures", "legendFormat": "verify --deep failures", "refId": "A" }
+      ],
+      "title": "(e) verify --deep failures",
+      "type": "stat"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["orfs", "audit-sink", "worm", "append-only"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Prometheus",
+        "multi": false,
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "OrFS audit-log sink",
+  "uid": "orfs-audit-sink",
+  "version": 1,
+  "weekStart": ""
+}

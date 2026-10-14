@@ -11,6 +11,11 @@ Receipt: [`../evidence/worm-case-study.json`](../evidence/worm-case-study.json)
 [`../scripts/worm-court.sh`](../scripts/worm-court.sh) (driven by
 [`../scripts/container-worm.sh`](../scripts/container-worm.sh)).
 
+**Production story:** for mounting OrFS at `/var/log/audit` and driving it as a
+real audit-log sink (systemd-journald / Kubernetes audit), with a JSON-event
+workload, an inotify tail reader, a mounted immutability proof, and a Grafana
+dashboard, see [`AUDIT-SINK.md`](AUDIT-SINK.md).
+
 ## 1. What "WORM" means here
 
 OrFS is built around **Law I — non-withdrawal**: committed authoritative history

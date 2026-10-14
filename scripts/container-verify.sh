@@ -66,6 +66,8 @@ else
         sh "$(dirname "$0")/container-pjdfstest.sh"
       run_stage "worm (append-only WORM case study)" \
         sh "$(dirname "$0")/container-worm.sh"
+      run_stage "audit-sink (JSON audit-log sink: inotify tail, immutability, scrape)" \
+        sh "$(dirname "$0")/container-auditsink.sh"
       run_stage "cross-language (Rust reference <-> Go: fixtures, mounts, handoffs, recovery)" \
         sh "$(dirname "$0")/container-crosslang.sh"
     else
@@ -77,6 +79,7 @@ else
       skip "cross-fs determinism (identical log bytes across ext4/xfs/btrfs/tmpfs)" "no /dev/fuse"
       skip "pjdfstest (upstream POSIX syscall suite vs the mount)" "no /dev/fuse"
       skip "worm (append-only WORM case study)" "no /dev/fuse"
+      skip "audit-sink (JSON audit-log sink: inotify tail, immutability, scrape)" "no /dev/fuse"
       skip "cross-language (Rust reference <-> Go: fixtures, mounts, handoffs, recovery)" "no /dev/fuse"
     fi
   else
@@ -91,6 +94,7 @@ else
     skip "cross-fs determinism (identical log bytes across ext4/xfs/btrfs/tmpfs)" "--fast"
     skip "pjdfstest (upstream POSIX syscall suite vs the mount)" "--fast"
     skip "worm (append-only WORM case study)" "--fast"
+    skip "audit-sink (JSON audit-log sink: inotify tail, immutability, scrape)" "--fast"
     skip "cross-language (Rust reference <-> Go: fixtures, mounts, handoffs, recovery)" "--fast"
   fi
 fi

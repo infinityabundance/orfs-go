@@ -28,6 +28,7 @@ capability, it is backed by code and, where a behaviour is claimed, by a court i
 | [`RUNTIME.md`](RUNTIME.md) | What the Go runtime costs the daemon: the measured GC/lock/allocation tail across `GOGC`×`GOMEMLIMIT`, the lock-free-read-view before/after, and when the port is operationally reasonable |
 | [`CONCURRENCY.md`](CONCURRENCY.md) | The concurrency model: lock-free immutable read views, the atomic publication at the commit boundary, the persistent-treap publication cost, and the invariants/proof obligations |
 | [`WORM.md`](WORM.md) | The append-only WORM audit-log-sink case study, the metrics surface, and how to scrape it |
+| [`AUDIT-SINK.md`](AUDIT-SINK.md) | The audit-log-sink production story: the JSON-event workload, the immutability argument, the inotify tail, the metrics/dashboard, the measured numbers, how to mount it, and the honest limits |
 | [`TRANSPORT.md`](TRANSPORT.md) | F0/F1/F2, what this build serves, the measured F0 comparison, and why F2 is not reachable here |
 | [`MANIFESTATION.md`](MANIFESTATION.md) | The concealed-expansion read path: identity, certification, fallback, measured results |
 | [`SNAPSHOTS.md`](SNAPSHOTS.md) | Index checkpoints: the snapshot format, the committed-root directory, validity/fallback policy, and the measured startup curve |
@@ -42,6 +43,7 @@ capability, it is backed by code and, where a behaviour is claimed, by a court i
 | [`../tests/fixtures/`](../tests/fixtures/README.md) | Frozen `legacy_v0`/`current_v1` compatibility volumes |
 | `../evidence/` | Machine-readable output written by the container courts |
 | [`grafana/orfs-worm-dashboard.json`](grafana/orfs-worm-dashboard.json) | A minimal Grafana dashboard over the `orfs metrics` exposition |
+| [`../courts/auditsink/dashboard.json`](../courts/auditsink/dashboard.json) | The 5-panel audit-sink Grafana dashboard (bytes+amplification, barrier p50/p99, batch size, breach/quarantine rate, verify failures) |
 
 ## The one rule
 

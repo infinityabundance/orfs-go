@@ -38,6 +38,7 @@ RUN CGO_ENABLED=0 go build -o /out/orfs ./cmd/orfs \
  && CGO_ENABLED=0 go build -o /out/gcsummary ./cmd/gcsummary \
  && CGO_ENABLED=0 go build -o /out/transportsummary ./cmd/transportsummary \
  && CGO_ENABLED=0 go build -o /out/orfsworm ./cmd/orfsworm \
+ && CGO_ENABLED=0 go build -o /out/orfsaudit ./cmd/orfsaudit \
  && CGO_ENABLED=0 go build -o /out/fuseuringprobe ./cmd/fuseuringprobe \
  && CGO_ENABLED=0 go build -o /out/orfsxlang ./cmd/orfsxlang \
  && CGO_ENABLED=0 go build -o /out/orfsoptprobe ./cmd/orfsoptprobe
