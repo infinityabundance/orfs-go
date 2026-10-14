@@ -1,0 +1,13 @@
+# Build artifacts
+/orfs
+/orfs-static
+*.test
+
+# Container caches (bind-mounted into the pinned image)
+/.cache/
+
+# Cloned reference repositories (local study only, never committed)
+/.reference/
+
+# Editor / OS
+.DS_Store
