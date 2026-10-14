@@ -62,6 +62,8 @@ else
         sh "$(dirname "$0")/container-crossfs.sh"
       run_stage "pjdfstest (upstream POSIX syscall suite vs the mount)" \
         sh "$(dirname "$0")/container-pjdfstest.sh"
+      run_stage "worm (append-only WORM case study)" \
+        sh "$(dirname "$0")/container-worm.sh"
     else
       skip "fuse (mounted POSIX court)" "no /dev/fuse"
       skip "fsstress (bounded op storm + POSIX extras)" "no /dev/fuse"
@@ -69,6 +71,7 @@ else
       skip "transport court (F0 vs f0-single, 4K randread)" "no /dev/fuse"
       skip "cross-fs determinism (identical log bytes across ext4/xfs/btrfs/tmpfs)" "no /dev/fuse"
       skip "pjdfstest (upstream POSIX syscall suite vs the mount)" "no /dev/fuse"
+      skip "worm (append-only WORM case study)" "no /dev/fuse"
     fi
   else
     skip "race (concurrent immutable reads)" "--fast"
@@ -80,6 +83,7 @@ else
     skip "transport court (F0 vs f0-single, 4K randread)" "--fast"
     skip "cross-fs determinism (identical log bytes across ext4/xfs/btrfs/tmpfs)" "--fast"
     skip "pjdfstest (upstream POSIX syscall suite vs the mount)" "--fast"
+    skip "worm (append-only WORM case study)" "--fast"
   fi
 fi
 

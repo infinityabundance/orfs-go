@@ -16,13 +16,16 @@ import (
 	"os/signal"
 	"runtime"
 	"syscall"
+	"time"
 
 	"github.com/infinityabundance/orfs-go/internal/doctor"
 	"github.com/infinityabundance/orfs-go/internal/fsck"
 	"github.com/infinityabundance/orfs-go/internal/fusefs"
 	"github.com/infinityabundance/orfs-go/internal/log"
 	"github.com/infinityabundance/orfs-go/internal/manifest"
+	"github.com/infinityabundance/orfs-go/internal/metrics"
 	"github.com/infinityabundance/orfs-go/internal/namespace"
+	"github.com/infinityabundance/orfs-go/internal/observe"
 	"github.com/infinityabundance/orfs-go/internal/orfserr"
 	"github.com/infinityabundance/orfs-go/internal/record"
 	"github.com/infinityabundance/orfs-go/internal/segment"
@@ -50,6 +53,8 @@ func run(args []string) int {
 		return cmdRecover(rest)
 	case "doctor":
 		return cmdDoctor(rest)
+	case "metrics":
+		return cmdMetrics(rest)
 	case "mount":
 		return cmdMount(rest)
 	case "unmount":
@@ -89,6 +94,7 @@ usage: orfs <command> [flags]
   verify <backing> [--deep] [--json]
   recover <backing> [--json]
   doctor [--capacity --backing <dir> [--reserve bytes]] [--json]
+  metrics <backing> [--json] [--skip-verify]
   mount <backing> <mountpoint> [--direct-io] [--transport f0|f0-single|fuse-uring] [--readers N]
   unmount <mountpoint>
   stat <backing> [--json]
@@ -300,18 +306,21 @@ func cmdDoctor(args []string) int {
 	if *backing == "" {
 		return fail(orfserr.Invalid("doctor --capacity requires --backing <dir>"))
 	}
-	l, err := log.Open(*backing, log.ReadOnly)
+	vol, err := volume.Open(*backing, log.ReadOnly)
 	if err != nil {
 		return fail(err)
 	}
-	defer l.Close()
+	defer vol.Close()
 	var reserveOverride *uint64
 	if reserveSet {
 		reserveOverride = reserve
 	}
-	st, err := doctor.CapacityStatus(l, doctor.BackingVolumeDisplay(*backing), reserveOverride)
+	st, err := doctor.CapacityStatus(vol.Log, doctor.BackingVolumeDisplay(*backing), reserveOverride)
 	if err != nil {
 		return fail(err)
+	}
+	if snap, err := observe.Collect(vol, observe.Options{}); err == nil {
+		st.MergeMetrics(snap)
 	}
 	if *asJSON {
 		out, _ := st.JSON()
@@ -319,6 +328,52 @@ func cmdDoctor(args []string) int {
 	} else {
 		fmt.Print(st.Text())
 	}
+	return 0
+}
+
+// cmdMetrics renders the Prometheus exposition for a volume. It runs a
+// verify --deep pass by default (the source of orfs_verify_deep_failures);
+// --skip-verify omits that pass. Runtime counters that a read-only inspection
+// cannot observe come from the snapshot the last mounted daemon persisted, or
+// else are reported as an explicit 0.
+func cmdMetrics(args []string) int {
+	fs := newFlagSet("metrics")
+	asJSON := fs.Bool("json", false, "emit JSON (schema orfs.metrics.v1)")
+	skipVerify := fs.Bool("skip-verify", false, "do not run a verify --deep pass")
+	pos, err := parseFlags(fs, args)
+	if err != nil {
+		return 2
+	}
+	if len(pos) != 1 {
+		return fail(orfserr.Invalid("metrics requires exactly one <backing> directory"))
+	}
+	v, err := volume.Open(pos[0], log.ReadOnly)
+	if err != nil {
+		return fail(err)
+	}
+	defer v.Close()
+	var rep *fsck.Report
+	if !*skipVerify {
+		r, err := fsck.Verify(pos[0], true)
+		if err != nil {
+			return fail(err)
+		}
+		rep = r
+	}
+	snap, err := observe.Collect(v, observe.Options{Verify: rep})
+	if err != nil {
+		return fail(err)
+	}
+	set := snap.Set()
+	if *asJSON {
+		out, err := set.JSON()
+		if err != nil {
+			return fail(err)
+		}
+		fmt.Println(string(out))
+		return 0
+	}
+	fmt.Print(set.Text())
 	return 0
 }
 
@@ -430,8 +485,26 @@ func cmdMount(args []string) int {
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
 	server.Unmount()
+	// Persist the process-scoped metrics snapshot (derived, non-authoritative) so
+	// an offline `orfs metrics` can report this run's barrier latency and batch
+	// counters. Deleting the sidecar changes nothing recoverable.
+	writeMetricsSnapshot(v, pos[0])
 	v.Close()
 	return 0
+}
+
+// writeMetricsSnapshot persists the live runtime counters beside volume.meta. A
+// failure is reported but never changes the authoritative log.
+func writeMetricsSnapshot(v *volume.Volume, backing string) {
+	snap := metrics.Snapshot{
+		Schema:     metrics.SnapshotSchema,
+		UUID:       fmt.Sprintf("%x", v.Meta.UUID),
+		CapturedAt: uint64(time.Now().Unix()),
+		Runtime:    v.Log.Runtime(),
+	}
+	if err := metrics.SaveSnapshot(backing, snap); err != nil {
+		fmt.Fprintf(os.Stderr, "orfs: could not persist metrics snapshot: %v\n", err)
+	}
 }
 
 func cmdUnmount(args []string) int {

@@ -44,6 +44,7 @@ its owning phase rather than pretending to work.
 | 34 | pjdfstest court (upstream POSIX syscall suite vs the mount; deviations published, not allowlisted) | complete — 8798/8798 assertions pass, 0 deviations |
 | 35 | Group commit: an opt-in `Log` coordinator coalescing concurrent publishes behind one durability barrier (own root + contiguous sequence numbers per transaction; all-or-nothing on a failed fsync), with correctness courts and an OFF-vs-ON receipt | complete — 4.31× throughput, 4.49× better p50 on the container backing |
 | 36 | Real-process crash-consistency court: `SIGKILL` the `cmd/orfscrashtest` writer mid-append, reopen read-write (quarantine MOVES the abandoned tail, never truncates), prove the committed prefix is byte-identical and the recovered root is a committed boundary, `verify --deep`, and publish `evidence/crash.json` | complete — 1000 kills, 379 abandoned tails (4 torn / 375 uncommitted) all quarantined; 0 truncations / 0 prefix mismatches / 0 recover failures |
+| 37 | Operator observability: a dependency-free Prometheus exposition (`orfs metrics <backing>`, `internal/metrics` + `internal/observe`), the capacity breach counter, the group-committer barrier histogram + batch stats persisted as a derived snapshot, the key values surfaced in `doctor --capacity`, and an append-only WORM audit-log-sink case study + Grafana dashboard | complete — `evidence/worm-case-study.json`; 8 MiB appended, 209 rec/s, append ≈ 4.5 ms p50 vs barrier ≤ 1 µs (the FUSE tax), amplification 1.115× |
 
 ## Phase 14 provenance note
 

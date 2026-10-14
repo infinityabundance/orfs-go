@@ -4,10 +4,13 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"lukechampine.com/blake3"
 
 	"github.com/infinityabundance/orfs-go/internal/capacity"
+	"github.com/infinityabundance/orfs-go/internal/metrics"
 	"github.com/infinityabundance/orfs-go/internal/orfserr"
 	"github.com/infinityabundance/orfs-go/internal/record"
 	"github.com/infinityabundance/orfs-go/internal/segment"
@@ -75,6 +78,14 @@ type Log struct {
 	// syncHook is the fsync seam. It is nil in production; a test may install a
 	// fake to force a barrier failure without touching the on-disk format.
 	syncHook func() error
+
+	// fsyncHist records the durability-barrier latency (seconds), and the batch
+	// counters record group-commit batch sizes. They are process-scoped and
+	// exposed (with the capacity refusal counters) through Runtime().
+	fsyncHist  *metrics.Histogram
+	batchLast  atomic.Uint64
+	batchCount atomic.Uint64
+	batchSum   atomic.Uint64
 }
 
 // Create initialises a fresh log: it creates the directory and segment 0, writes
@@ -139,6 +150,7 @@ func Create(backing string, genesis record.Genesis, opts ...Option) (*Log, error
 		genesis:          genesis,
 		recovery:         RecoveryDisposition{Clean: true},
 		cap:              capacity.New(capacity.DefaultPolicy()),
+		fsyncHist:        metrics.NewHistogram(metrics.FsyncBounds),
 	}
 	l.cap.ResolveFromBacking(dir, l.committedRoot)
 	if err := l.persistWatermark(); err != nil {
@@ -182,6 +194,7 @@ func Open(backing string, mode Mode, opts ...Option) (*Log, error) {
 		tail:             scan.Tail,
 		durableWatermark: dw,
 		cap:              capacity.New(capacity.DefaultPolicy()),
+		fsyncHist:        metrics.NewHistogram(metrics.FsyncBounds),
 	}
 
 	if mode == ReadWrite {
@@ -475,13 +488,46 @@ func (l *Log) applyTx(p *preparedTx, root uint64) {
 	l.maxTxID = p.txID
 }
 
-// syncWriter takes the durability barrier. The syncHook seam lets a test force
-// a barrier failure.
+// syncWriter takes the durability barrier, recording its latency. The syncHook
+// seam lets a test force a barrier failure.
 func (l *Log) syncWriter() error {
+	start := time.Now()
+	var err error
 	if l.syncHook != nil {
-		return l.syncHook()
+		err = l.syncHook()
+	} else {
+		err = l.writer.Sync()
 	}
-	return l.writer.Sync()
+	if l.fsyncHist != nil {
+		l.fsyncHist.Observe(time.Since(start).Seconds())
+	}
+	return err
+}
+
+// recordBatch records one group-commit batch size.
+func (l *Log) recordBatch(n int) {
+	l.batchLast.Store(uint64(n))
+	l.batchCount.Add(1)
+	l.batchSum.Add(uint64(n))
+}
+
+// Runtime returns the process-scoped counters: capacity refusals, the fsync
+// histogram, and group-commit batch statistics. A freshly opened read-only log
+// reports empty/zero values because it has performed no work.
+func (l *Log) Runtime() metrics.Runtime {
+	rt := metrics.Runtime{
+		BatchLast:  l.batchLast.Load(),
+		BatchCount: l.batchCount.Load(),
+		BatchSum:   l.batchSum.Load(),
+	}
+	if l.cap != nil {
+		rt.Breach = l.cap.BreachCounts()
+	}
+	if l.fsyncHist != nil {
+		hs := l.fsyncHist.Snapshot()
+		rt.Fsync = &hs
+	}
+	return rt
 }
 
 // writeFrame appends one framed record, rolling over to a fresh segment when it

@@ -18,6 +18,7 @@ import (
 
 	"github.com/infinityabundance/orfs-go/internal/capacity"
 	"github.com/infinityabundance/orfs-go/internal/log"
+	"github.com/infinityabundance/orfs-go/internal/observe"
 	"github.com/infinityabundance/orfs-go/internal/segment"
 	"github.com/infinityabundance/orfs-go/internal/transport"
 )
@@ -46,6 +47,23 @@ type Status struct {
 	Degraded           bool         `json:"degraded"`
 	DegradedReason     string       `json:"degraded_reason,omitempty"`
 	Policy             PolicyReport `json:"policy"`
+
+	// Metrics surfaced from internal/observe: the key operator counters and
+	// gauges that `orfs metrics` exposes in full. Runtime-only fields (fsync
+	// latency, batch size, deep-verify failures) are pointers so they are omitted
+	// when this inspection could not observe them.
+	ManifestedBytes      uint64   `json:"manifested_bytes"`
+	LogicalBytes         uint64   `json:"logical_bytes"`
+	AmplificationRatio   *float64 `json:"amplification_ratio,omitempty"`
+	BreachTotal          uint64   `json:"breach_total"`
+	QuarantineSegments   uint64   `json:"quarantine_segments"`
+	QuarantineBytes      uint64   `json:"quarantine_bytes"`
+	FsyncP50Seconds      *float64 `json:"fsync_p50_seconds,omitempty"`
+	FsyncP99Seconds      *float64 `json:"fsync_p99_seconds,omitempty"`
+	GroupCommitBatchLast *uint64  `json:"group_commit_batch_last,omitempty"`
+	GroupCommitBatchAvg  *float64 `json:"group_commit_batch_avg,omitempty"`
+	VerifyDeepFailures   *uint64  `json:"verify_deep_failures,omitempty"`
+	MetricsRuntimeSource string   `json:"metrics_runtime_source,omitempty"`
 }
 
 // PolicyReport mirrors the capacity policy for the report.
@@ -126,6 +144,30 @@ func CapacityStatus(l *log.Log, volumeDisplay string, reserveOverride *uint64) (
 	}, nil
 }
 
+// MergeMetrics folds the collected observability snapshot into the report. It
+// never overwrites a capacity field; it only adds the metrics surface.
+func (s *Status) MergeMetrics(snap observe.Snapshot) {
+	s.ManifestedBytes = snap.ManifestedBytes
+	s.LogicalBytes = snap.LogicalBytes
+	s.AmplificationRatio = snap.Amplification
+	s.BreachTotal = snap.BreachTotal
+	s.QuarantineSegments = snap.QuarantineSegments
+	s.QuarantineBytes = snap.QuarantineBytes
+	s.MetricsRuntimeSource = snap.RuntimeSource
+	if snap.RuntimeSource != "absent" {
+		p50, p99 := snap.FsyncP50, snap.FsyncP99
+		s.FsyncP50Seconds = &p50
+		s.FsyncP99Seconds = &p99
+		last, avg := snap.BatchLast, snap.BatchAvg
+		s.GroupCommitBatchLast = &last
+		s.GroupCommitBatchAvg = &avg
+	}
+	if snap.VerifyDeepRan {
+		f := snap.VerifyDeepFailures
+		s.VerifyDeepFailures = &f
+	}
+}
+
 // JSON renders the report in the stable envelope.
 func (s Status) JSON() ([]byte, error) { return json.MarshalIndent(s, "", "  ") }
 
@@ -145,6 +187,11 @@ func (s Status) Text() string {
 	}
 	fmt.Fprintf(&b, "retained physical:   %d byte(s)\n", s.PhysicalBytes)
 	fmt.Fprintf(&b, "authoritative root:  %d byte(s)\n", s.AuthoritativeBytes)
+	fmt.Fprintf(&b, "manifested bytes:    %d byte(s)\n", s.ManifestedBytes)
+	fmt.Fprintf(&b, "logical file bytes:  %d byte(s)\n", s.LogicalBytes)
+	if s.AmplificationRatio != nil {
+		fmt.Fprintf(&b, "amplification:       %.3fx (authoritative root / logical)\n", *s.AmplificationRatio)
+	}
 	fmt.Fprintf(&b, "log segments:        %d\n", s.SegmentCount)
 	fmt.Fprintf(&b, "committed txns:      %d\n", s.TransactionCount)
 	if s.BytesPerTxn != nil {
@@ -152,6 +199,19 @@ func (s Status) Text() string {
 	}
 	if s.EstimatedRemaining != nil {
 		fmt.Fprintf(&b, "est. txns remaining: %d\n", *s.EstimatedRemaining)
+	}
+	if s.BreachTotal > 0 || s.QuarantineSegments > 0 {
+		fmt.Fprintf(&b, "capacity breaches:   %d refusal(s)\n", s.BreachTotal)
+		fmt.Fprintf(&b, "quarantined tails:   %d segment(s), %d byte(s)\n", s.QuarantineSegments, s.QuarantineBytes)
+	}
+	if s.FsyncP50Seconds != nil && s.FsyncP99Seconds != nil {
+		fmt.Fprintf(&b, "barrier latency:     p50=%.6fs p99=%.6fs (%s)\n", *s.FsyncP50Seconds, *s.FsyncP99Seconds, s.MetricsRuntimeSource)
+	}
+	if s.GroupCommitBatchLast != nil && s.GroupCommitBatchAvg != nil {
+		fmt.Fprintf(&b, "group-commit batch:  last=%d avg=%.2f\n", *s.GroupCommitBatchLast, *s.GroupCommitBatchAvg)
+	}
+	if s.VerifyDeepFailures != nil {
+		fmt.Fprintf(&b, "verify --deep fails: %d\n", *s.VerifyDeepFailures)
 	}
 	if s.Filesystem != "" {
 		fmt.Fprintf(&b, "backing fs:          %s (%s on %s)\n", s.Filesystem, s.Device, s.MountPoint)

@@ -1,0 +1,348 @@
+{
+  "schema": "orfs.worm.case-study.v1",
+  "generated_at_unix": 1791992209,
+  "volume": "/tmp/tmp.E872be17bT/vol",
+  "config": {
+    "group_commit": true,
+    "mount": "FUSE (go-fuse, direct mount)",
+    "segment_size_bytes": 4194304,
+    "single_writer": true,
+    "transport": "f0",
+    "workload": "append-only audit-log sink (WORM)"
+  },
+  "workload": {
+    "schema": "orfs.worm.sink.v1",
+    "file": "/tmp/tmp.E872be17bT/mnt/audit.log",
+    "records": 2048,
+    "record_bytes": 4096,
+    "payload_bytes": 4080,
+    "appended_bytes": 8388608,
+    "logical_bytes": 8388608,
+    "wall_seconds": 9.246936352,
+    "throughput_records_per_sec": 221.4787603201186,
+    "throughput_bytes_per_sec": 907177.0022712058,
+    "append_fsync_p50_ns": 4442461,
+    "append_fsync_p99_ns": 7121522,
+    "append_fsync_mean_ns": 4514914,
+    "tail_reads": 3675,
+    "tail_growth_observations": 905,
+    "tail_bytes_read": 8388608,
+    "tail_monotonic": true
+  },
+  "bytes": {
+    "logical_bytes": 8388608,
+    "physical_bytes": 9356051,
+    "manifested_bytes": 8389259,
+    "authoritative_root_bytes": 9356015,
+    "amplification_ratio": 1.1153239011764526
+  },
+  "counters": {
+    "breach_total": 0,
+    "quarantine_segments": 0,
+    "quarantine_bytes": 0,
+    "verify_deep_failures": 0
+  },
+  "fsync_latency_seconds": {
+    "p50_seconds": 0.000001,
+    "p99_seconds": 0.000002,
+    "count": 2049,
+    "observed": true
+  },
+  "group_commit_batch_size": {
+    "last": 1,
+    "avg": 1,
+    "observed": true
+  },
+  "prometheus": "# HELP orfs_physical_bytes Authoritative retained bytes on the backing: committed or.log/*.seg plus commit.watermark (excludes the derived .or_bloom/).\n# TYPE orfs_physical_bytes gauge\norfs_physical_bytes 9356051\n\n# HELP orfs_authoritative_bytes The committed root R: the end offset of the authoritative logical byte stream.\n# TYPE orfs_authoritative_bytes gauge\norfs_authoritative_bytes 9356015\n\n# HELP orfs_logical_bytes Bytes of live regular-file content in the namespace (the amplification denominator).\n# TYPE orfs_logical_bytes gauge\norfs_logical_bytes 8388608\n\n# HELP orfs_manifested_bytes Bytes under the derived .or_bloom/ manifestation directory.\n# TYPE orfs_manifested_bytes gauge\norfs_manifested_bytes 8389259\n\n# HELP orfs_amplification_ratio Authoritative committed root divided by logical regular-file bytes; \u003e= 1 is the framing/retention tax of append-only history. Reported as 0 when the volume holds no regular-file bytes.\n# TYPE orfs_amplification_ratio gauge\norfs_amplification_ratio 1.1153239011764526\n\n# HELP orfs_degraded 1 when the volume has latched read-only (a capacity degradation), else 0.\n# TYPE orfs_degraded gauge\norfs_degraded 0\n\n# HELP orfs_breach_total Capacity-guard admission refusals by reason; a refusal denies growth before the first byte (Law I). The read-only latch is orfs_degraded.\n# TYPE orfs_breach_total counter\norfs_breach_total{reason=\"backing_reserve\"} 0\norfs_breach_total{reason=\"authoritative\"} 0\norfs_breach_total{reason=\"hard_quota\"} 0\n\n# HELP orfs_quarantine_total Retained abandoned-tail segments/bytes moved into or.log/quarantine/ (recovery moves, never truncates).\n# TYPE orfs_quarantine_total counter\norfs_quarantine_total{unit=\"segments\"} 0\norfs_quarantine_total{unit=\"bytes\"} 0\n\n# HELP orfs_verify_deep_failures Failed checks from the most recent verify --deep pass.\n# TYPE orfs_verify_deep_failures gauge\norfs_verify_deep_failures 0\n\n# HELP orfs_fsync_latency_seconds Durability-barrier (fsync) latency; quantiles are a bounded fixed-bucket estimate. Source: persisted snapshot from the last mounted run.\n# TYPE orfs_fsync_latency_seconds summary\norfs_fsync_latency_seconds{quantile=\"0.5\"} 1e-06\norfs_fsync_latency_seconds{quantile=\"0.99\"} 2e-06\norfs_fsync_latency_seconds_sum 0.0012667490000000013\norfs_fsync_latency_seconds_count 2049\n\n# HELP orfs_group_commit_batch_size Group-commit batch size in transactions per barrier. Source: persisted snapshot from the last mounted run.\n# TYPE orfs_group_commit_batch_size gauge\norfs_group_commit_batch_size{stat=\"last\"} 1\norfs_group_commit_batch_size{stat=\"avg\"} 1\n\n# HELP orfs_metrics_snapshot_timestamp_seconds Unix time the persisted runtime snapshot was captured.\n# TYPE orfs_metrics_snapshot_timestamp_seconds gauge\norfs_metrics_snapshot_timestamp_seconds 1791992207\n",
+  "prometheus_json": {
+    "schema": "orfs.metrics.v1",
+    "families": [
+      {
+        "name": "orfs_physical_bytes",
+        "help": "Authoritative retained bytes on the backing: committed or.log/*.seg plus commit.watermark (excludes the derived .or_bloom/).",
+        "type": "gauge",
+        "samples": [
+          {
+            "value": 9356051
+          }
+        ]
+      },
+      {
+        "name": "orfs_authoritative_bytes",
+        "help": "The committed root R: the end offset of the authoritative logical byte stream.",
+        "type": "gauge",
+        "samples": [
+          {
+            "value": 9356015
+          }
+        ]
+      },
+      {
+        "name": "orfs_logical_bytes",
+        "help": "Bytes of live regular-file content in the namespace (the amplification denominator).",
+        "type": "gauge",
+        "samples": [
+          {
+            "value": 8388608
+          }
+        ]
+      },
+      {
+        "name": "orfs_manifested_bytes",
+        "help": "Bytes under the derived .or_bloom/ manifestation directory.",
+        "type": "gauge",
+        "samples": [
+          {
+            "value": 8389259
+          }
+        ]
+      },
+      {
+        "name": "orfs_amplification_ratio",
+        "help": "Authoritative committed root divided by logical regular-file bytes; \u003e= 1 is the framing/retention tax of append-only history. Reported as 0 when the volume holds no regular-file bytes.",
+        "type": "gauge",
+        "samples": [
+          {
+            "value": 1.1153239011764526
+          }
+        ]
+      },
+      {
+        "name": "orfs_degraded",
+        "help": "1 when the volume has latched read-only (a capacity degradation), else 0.",
+        "type": "gauge",
+        "samples": [
+          {
+            "value": 0
+          }
+        ]
+      },
+      {
+        "name": "orfs_breach_total",
+        "help": "Capacity-guard admission refusals by reason; a refusal denies growth before the first byte (Law I). The read-only latch is orfs_degraded.",
+        "type": "counter",
+        "samples": [
+          {
+            "labels": [
+              {
+                "name": "reason",
+                "value": "backing_reserve"
+              }
+            ],
+            "value": 0
+          },
+          {
+            "labels": [
+              {
+                "name": "reason",
+                "value": "authoritative"
+              }
+            ],
+            "value": 0
+          },
+          {
+            "labels": [
+              {
+                "name": "reason",
+                "value": "hard_quota"
+              }
+            ],
+            "value": 0
+          }
+        ]
+      },
+      {
+        "name": "orfs_quarantine_total",
+        "help": "Retained abandoned-tail segments/bytes moved into or.log/quarantine/ (recovery moves, never truncates).",
+        "type": "counter",
+        "samples": [
+          {
+            "labels": [
+              {
+                "name": "unit",
+                "value": "segments"
+              }
+            ],
+            "value": 0
+          },
+          {
+            "labels": [
+              {
+                "name": "unit",
+                "value": "bytes"
+              }
+            ],
+            "value": 0
+          }
+        ]
+      },
+      {
+        "name": "orfs_verify_deep_failures",
+        "help": "Failed checks from the most recent verify --deep pass.",
+        "type": "gauge",
+        "samples": [
+          {
+            "value": 0
+          }
+        ]
+      },
+      {
+        "name": "orfs_fsync_latency_seconds",
+        "help": "Durability-barrier (fsync) latency; quantiles are a bounded fixed-bucket estimate. Source: persisted snapshot from the last mounted run.",
+        "type": "summary",
+        "samples": [
+          {
+            "labels": [
+              {
+                "name": "quantile",
+                "value": "0.5"
+              }
+            ],
+            "value": 0.000001
+          },
+          {
+            "labels": [
+              {
+                "name": "quantile",
+                "value": "0.99"
+              }
+            ],
+            "value": 0.000002
+          },
+          {
+            "name": "orfs_fsync_latency_seconds_sum",
+            "value": 0.0012667490000000013
+          },
+          {
+            "name": "orfs_fsync_latency_seconds_count",
+            "value": 2049
+          }
+        ]
+      },
+      {
+        "name": "orfs_group_commit_batch_size",
+        "help": "Group-commit batch size in transactions per barrier. Source: persisted snapshot from the last mounted run.",
+        "type": "gauge",
+        "samples": [
+          {
+            "labels": [
+              {
+                "name": "stat",
+                "value": "last"
+              }
+            ],
+            "value": 1
+          },
+          {
+            "labels": [
+              {
+                "name": "stat",
+                "value": "avg"
+              }
+            ],
+            "value": 1
+          }
+        ]
+      },
+      {
+        "name": "orfs_metrics_snapshot_timestamp_seconds",
+        "help": "Unix time the persisted runtime snapshot was captured.",
+        "type": "gauge",
+        "samples": [
+          {
+            "value": 1791992207
+          }
+        ]
+      }
+    ]
+  },
+  "doctor_capacity": {
+    "schema": "orfs.capacity.report.v1",
+    "volume": "/tmp/tmp.E872be17bT/vol",
+    "physical_bytes": 9356051,
+    "segment_count": 3,
+    "authoritative_bytes": 9356015,
+    "free_bytes": 1586061312,
+    "mount_point": "/",
+    "device": "overlay",
+    "filesystem": "overlay",
+    "reserve_bytes": 0,
+    "headroom_bytes": 1586061312,
+    "transaction_count": 2049,
+    "bytes_per_transaction": 4568,
+    "estimated_transactions_remaining": 347211,
+    "verdict": "ok",
+    "degraded": false,
+    "policy": {
+      "reserve_bytes": 0,
+      "authoritative_capacity_bytes": null,
+      "soft_quota_bytes": null,
+      "hard_quota_bytes": null
+    },
+    "manifested_bytes": 8389259,
+    "logical_bytes": 8388608,
+    "amplification_ratio": 1.1153239011764526,
+    "breach_total": 0,
+    "quarantine_segments": 0,
+    "quarantine_bytes": 0,
+    "fsync_p50_seconds": 0.000001,
+    "fsync_p99_seconds": 0.000002,
+    "group_commit_batch_last": 1,
+    "group_commit_batch_avg": 1,
+    "metrics_runtime_source": "snapshot"
+  },
+  "verify_deep": {
+    "volume": "/tmp/tmp.E872be17bT/vol",
+    "log_format_version": 1,
+    "uuid": "153a14b7bf3a40e0a2ec133670dacf2e",
+    "committed_root": 9356015,
+    "committed_records": 8198,
+    "transaction_count": 2049,
+    "segments": 3,
+    "physical_bytes": 9356015,
+    "tail_abandoned_bytes": 0,
+    "checks": [
+      {
+        "name": "framing",
+        "ok": true,
+        "detail": "every committed record framed and checksummed"
+      },
+      {
+        "name": "transactions",
+        "ok": true,
+        "detail": "every committed bracket validated"
+      },
+      {
+        "name": "watermark",
+        "ok": true
+      },
+      {
+        "name": "replay",
+        "ok": true,
+        "detail": "2 inode(s), 1 dentr(ies)"
+      }
+    ],
+    "deep": true,
+    "inodes": 2,
+    "dentries": 1
+  },
+  "manifest": {
+    "schema": "orfs.manifest.v1",
+    "inode": 2,
+    "inode_version": 4098,
+    "root": 9356015,
+    "logical_len": 8388608,
+    "physical_bytes": 8388904,
+    "body_blake3": "640ccdc707bf42aa5bea94470261bf9c23dc608e74b1b960523b56db9143d450",
+    "logical_blake3": "423119b95cabb27739ffd0edea2244bd6f557f48e0150bfa29aa0c2bca4e421b",
+    "ekbloom_version": "ekbloom-go"
+  },
+  "notes": [
+    "This is an append-only WORM audit-log sink, not a general-purpose filesystem: records are appended and fsynced, never rewritten, and readers tail.",
+    "Each append is one authoritative transaction, so append latency includes the publish barrier (fsync) under the FUSE tax.",
+    "Records are 4 KiB page-aligned (4080-byte payload + a 16-byte frame header) so one client write is exactly one FUSE write and one transaction; a non-aligned record size can be split across a 4 KiB page boundary by the FUSE layer, which shows up as more transactions than appends.",
+    "orfs_fsync_latency_seconds is the daemon-internal durability barrier (a bounded bucket estimate); orfs_group_commit_batch_size last/avg is 1 because the sink is a single sequential writer, so each write is its own batch.",
+    "The barrier is far cheaper than the end-to-end append: compare orfs_fsync_latency_seconds with the sink's append_fsync latency. The difference is the FUSE round trip plus transaction framing, watermark, and index replay — the FUSE tax, not the barrier.",
+    "orfs_physical_bytes is authoritative retained bytes (or.log/*.seg + commit.watermark); .or_bloom/ is excluded and reported separately as orfs_manifested_bytes."
+  ]
+}

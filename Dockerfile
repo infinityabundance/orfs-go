@@ -35,6 +35,7 @@ RUN CGO_ENABLED=0 go build -o /out/orfs ./cmd/orfs \
  && CGO_ENABLED=0 go build -o /out/fiosummary ./cmd/fiosummary \
  && CGO_ENABLED=0 go build -o /out/orfsstress ./cmd/orfsstress \
  && CGO_ENABLED=0 go build -o /out/transportsummary ./cmd/transportsummary \
+ && CGO_ENABLED=0 go build -o /out/orfsworm ./cmd/orfsworm \
  && CGO_ENABLED=0 go build -o /out/fuseuringprobe ./cmd/fuseuringprobe
 
 # Build the upstream pjdfstest suite into the image so the pjdfstest court can

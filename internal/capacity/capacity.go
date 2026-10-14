@@ -14,6 +14,7 @@ package capacity
 
 import (
 	"path/filepath"
+	"sync"
 
 	"golang.org/x/sys/unix"
 
@@ -91,16 +92,53 @@ type Governor struct {
 
 	optionalUsed      uint64
 	optionalThrottled bool
+
+	// breaches counts admission refusals by reason. It is the operator-facing
+	// signal that the guard is refusing growth (Law I: it refuses, never
+	// reclaims), and it is what `orfs metrics` exposes as orfs_breach_total.
+	breachMu sync.Mutex
+	breaches map[string]uint64
 }
+
+// Breach reason labels.
+const (
+	// BreachBackingReserve is a refusal of the live backing-reserve pre-flight.
+	BreachBackingReserve = "backing_reserve"
+	// BreachAuthoritative is a refusal of the explicit authoritative bound.
+	BreachAuthoritative = "authoritative"
+	// BreachHardQuota is a refusal of the explicit hard quota.
+	BreachHardQuota = "hard_quota"
+)
 
 // New builds a governor with no device probe.
 func New(p Policy) *Governor {
-	g := &Governor{policy: p}
+	g := &Governor{policy: p, breaches: make(map[string]uint64)}
 	if p.AuthoritativeCapacityBytes != nil {
 		g.capacity = *p.AuthoritativeCapacityBytes
 		g.hasCap = true
 	}
 	return g
+}
+
+// noteBreach records one admission refusal under reason.
+func (g *Governor) noteBreach(reason string) {
+	g.breachMu.Lock()
+	if g.breaches == nil {
+		g.breaches = make(map[string]uint64)
+	}
+	g.breaches[reason]++
+	g.breachMu.Unlock()
+}
+
+// BreachCounts returns a copy of the refusal counters by reason.
+func (g *Governor) BreachCounts() map[string]uint64 {
+	g.breachMu.Lock()
+	defer g.breachMu.Unlock()
+	out := make(map[string]uint64, len(g.breaches))
+	for k, v := range g.breaches {
+		out[k] = v
+	}
+	return out
 }
 
 // Policy returns the policy in force.
@@ -170,6 +208,7 @@ func (g *Governor) CheckBackingReserve(dir string, needed uint64) error {
 	if headroom == 0 {
 		g.Degrade("backing store at or below the reserve: free " + itoa(free) + " <= reserve " + itoa(reserve))
 	}
+	g.noteBreach(BreachBackingReserve)
 	return orfserr.Exhausted(needed, headroom)
 }
 
@@ -186,6 +225,7 @@ func (g *Governor) CheckAuthoritative(used, needed uint64) error {
 		limit := satSub(g.capacity, reserve)
 		if projected > limit {
 			msg := "authoritative capacity exhausted: " + itoa(projected) + " byte(s) needed but only " + itoa(limit) + " admissible"
+			g.noteBreach(BreachAuthoritative)
 			g.Degrade(msg)
 			return orfserr.NoSpaceErr("%s", msg)
 		}
@@ -193,6 +233,7 @@ func (g *Governor) CheckAuthoritative(used, needed uint64) error {
 	if g.policy.HardQuotaBytes != nil {
 		if projected > *g.policy.HardQuotaBytes {
 			msg := "authoritative hard quota exceeded: " + itoa(projected) + " > " + itoa(*g.policy.HardQuotaBytes)
+			g.noteBreach(BreachHardQuota)
 			g.Degrade(msg)
 			return orfserr.NoSpaceErr("%s", msg)
 		}

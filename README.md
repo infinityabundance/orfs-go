@@ -48,6 +48,7 @@ Working today:
 | Cross-FS determinism (identical `or.log` bytes across ext4/xfs/btrfs/tmpfs) | implemented — `evidence/correctness/cross-fs.json` |
 | pjdfstest court | implemented — **8798/8798 passing** (`docs/LIMITATIONS.md` §11) |
 | Transport (`--transport f0 \| f0-single \| fuse-uring`) with a loud F2 fallback; F2 (`io_uring`) probed live — the kernel supports it, go-fuse exposes none (see `docs/TRANSPORT.md`) | implemented — `evidence/performance/transport.json` |
+| Operator metrics (`orfs metrics`, Prometheus text + `--json`) and an append-only WORM case study | implemented — `evidence/worm-case-study.json`, `docs/WORM.md` |
 
 Honest non-claims: the **image pixel-surface pyramid is rejected, not merely
 unimplemented** (`docs/REJECTED.md`). No performance superiority is claimed; the
@@ -66,6 +67,7 @@ umount /mnt/orfs
 
 ./orfs verify --deep /var/lib/orfs/demo
 ./orfs doctor --capacity --backing /var/lib/orfs/demo
+./orfs metrics /var/lib/orfs/demo              # Prometheus text exposition
 ```
 
 ## Documentation
@@ -79,6 +81,7 @@ receipts are in [`docs/BENCH.md`](docs/BENCH.md); reproduction in
 [`MANIFESTATION.md`](docs/MANIFESTATION.md) (the concealed read path),
 [`TRANSPORT.md`](docs/TRANSPORT.md) (F0/F1/F2, the measured F0 comparison, and why F2 is not reachable here),
 [`OPERATIONS.md`](docs/OPERATIONS.md) (growth, recovery, capacity),
+[`WORM.md`](docs/WORM.md) (the append-only WORM case study and the metrics surface),
 [`SECURITY.md`](docs/SECURITY.md), [`LIMITATIONS.md`](docs/LIMITATIONS.md),
 [`REJECTED.md`](docs/REJECTED.md), [`PROGRESS.md`](docs/PROGRESS.md).
 
@@ -113,6 +116,8 @@ internal/namespace  POSIX operations expressed as transactions
 internal/capacity   the capacity guard
 internal/fsck     read-only verification
 internal/doctor   the capability probe and capacity report
+internal/metrics  the dependency-free Prometheus exposition primitives
+internal/observe  collects the metrics from a volume
 internal/fusefs   the FUSE projection
 internal/transport the F0/F1/F2 transport story: probe, negotiate, serve mode
 internal/fixture  the frozen mini-volumes for the format court

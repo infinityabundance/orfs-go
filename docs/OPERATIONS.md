@@ -31,6 +31,9 @@ orfs doctor --capacity --backing <dir> --json   # schema orfs.capacity.report.v1
 | `estimated_transactions_remaining` | `headroom / bytes_per_transaction` |
 | `verdict` | `ok` / `warn` / `exhausted` |
 | `degraded` / `degraded_reason` | the read-only latch state |
+| `manifested_bytes` / `logical_bytes` / `amplification_ratio` | the bytes surface from `internal/observe` (the ratio is committed root / logical file bytes) |
+| `breach_total` / `quarantine_segments` / `quarantine_bytes` | capacity refusals and retained abandoned tails |
+| `fsync_p50_seconds` / `fsync_p99_seconds` / `group_commit_batch_last` / `group_commit_batch_avg` | the runtime counters, from the live process or the persisted snapshot |
 
 Verdict rules:
 
@@ -64,6 +67,26 @@ A mounted volume installs the seam automatically: any read of a manifested inode
 is served from the body, or from authority when the identity is stale or
 certification fails. See `docs/MANIFESTATION.md`. The manifested plane is
 derived — a failure in it never fails an authoritative commit.
+
+### 1b. Operator metrics (`orfs metrics`)
+
+The full observability surface is a dependency-free Prometheus text exposition:
+
+```sh
+orfs metrics <backing>            # Prometheus text (version 0.0.4) to stdout
+orfs metrics <backing> --json     # schema orfs.metrics.v1
+orfs metrics <backing> --skip-verify
+```
+
+It is read-only. It runs a `verify --deep` pass to source
+`orfs_verify_deep_failures`. On-disk families (physical / manifested / logical
+bytes, amplification, quarantine, degraded) are recomputed on every call;
+**process-scoped** families (capacity refusals, the barrier histogram, batch
+sizes) come from the `metrics.json` snapshot the mount daemon writes beside
+`volume.meta` when it shuts down, or, when no snapshot exists, are emitted as an
+explicit **0** whose `# HELP` says so. There is no HTTP endpoint: feed it to a
+Prometheus textfile collector. See [`WORM.md`](WORM.md) for the metric table, the
+append-only WORM case study, and the Grafana dashboard.
 
 ## 2. Recovery runbook
 

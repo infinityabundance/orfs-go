@@ -211,6 +211,7 @@ type stagedTx struct {
 // intact. No waiter is acknowledged before the barrier that covers its bytes.
 func (g *groupCommitter) commitBatch(batch []*publishRequest) {
 	l := g.log
+	l.recordBatch(len(batch))
 
 	// Phase 1: plan.
 	pos := l.appendPos()

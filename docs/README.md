@@ -24,6 +24,7 @@ capability, it is backed by code and, where a behaviour is claimed, by a court i
 | Document | What it is |
 | --- | --- |
 | [`OPERATIONS.md`](OPERATIONS.md) | Growth monitoring (logical vs physical), the recovery runbook, mount latency, capacity transitions |
+| [`WORM.md`](WORM.md) | The append-only WORM audit-log-sink case study, the metrics surface, and how to scrape it |
 | [`TRANSPORT.md`](TRANSPORT.md) | F0/F1/F2, what this build serves, the measured F0 comparison, and why F2 is not reachable here |
 | [`MANIFESTATION.md`](MANIFESTATION.md) | The concealed-expansion read path: identity, certification, fallback, measured results |
 | [`LIMITATIONS.md`](LIMITATIONS.md) | Every standing non-claim, so absence is explicit |
@@ -36,6 +37,7 @@ capability, it is backed by code and, where a behaviour is claimed, by a court i
 | --- | --- |
 | [`../tests/fixtures/`](../tests/fixtures/README.md) | Frozen `legacy_v0`/`current_v1` compatibility volumes |
 | `../evidence/` | Machine-readable output written by the container courts |
+| [`grafana/orfs-worm-dashboard.json`](grafana/orfs-worm-dashboard.json) | A minimal Grafana dashboard over the `orfs metrics` exposition |
 
 ## The one rule
 
