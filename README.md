@@ -44,7 +44,7 @@ Working today:
 | Simulated power-loss device + crash-consistency court | implemented |
 | Frozen `legacy_v0` / `current_v1` fixtures + byte-identity court | implemented |
 | `orfs init` / `inspect` / `verify [--deep]` / `recover` / `doctor` / `mount` / `manifest` / `stat` | implemented |
-| Growth/amplification, external `fio` baseline, 64-thread scaling, fsstress, capacity/quarantine courts | implemented — receipts under `evidence/`, honest numbers in `docs/BENCH.md` |
+| Growth/amplification, external `fio` baseline, 64-thread scaling, fsstress, capacity/quarantine, scan-resistant admission courts | implemented — receipts under `evidence/`, honest numbers in `docs/BENCH.md` |
 | F2 transport, cross-FS determinism, group commit, S3-FIFO admission | planned — see `docs/PROGRESS.md` |
 
 Honest non-claims: the **image pixel-surface pyramid is rejected, not merely

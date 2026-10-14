@@ -38,7 +38,8 @@ its owning phase rather than pretending to work.
 | 28 | fsstress-equivalent court (bounded op storm + POSIX extras + `verify --deep`) | complete |
 | 29 | Capacity `CapacityExhausted` + quarantine-never-truncates courts + receipts | complete |
 | 30 | Multi-arch publish workflow + tagged release | complete |
-| 31 | F2 (FUSE-over-`io_uring`); cross-FS determinism; group commit; S3-FIFO admission | planned |
+| 31 | Scan-resistant admission court (S3-FIFO vs FIFO vs LRU) | complete |
+| 32 | F2 (FUSE-over-`io_uring`); cross-FS determinism; group commit; per-read allocs court | planned |
 
 ## Phase 14 provenance note
 

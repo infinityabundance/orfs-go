@@ -1,0 +1,44 @@
+{
+  "schema": "orfs.performance.cache.v1",
+  "workload": {
+    "capacity": 32,
+    "hot_objects": 20,
+    "scan_objects": 512,
+    "warmup_rounds": 4,
+    "hot_reads_per_scan_step": 20,
+    "scan_passes": 1,
+    "trace_length": 10752
+  },
+  "policies": [
+    {
+      "policy": "s3fifo",
+      "capacity": 32,
+      "trace_length": 10752,
+      "hits": 10240,
+      "misses": 512,
+      "hit_rate": 0.9523809523809523,
+      "note": "S3-FIFO admission: small probationary FIFO (~10% of capacity) with a frequency bit, main FIFO (~90%), and a keys-only ghost queue; single-touch scan keys never reach main",
+      "promotions": 20,
+      "evictions": 500
+    },
+    {
+      "policy": "fifo",
+      "capacity": 32,
+      "trace_length": 10752,
+      "hits": 9460,
+      "misses": 1292,
+      "hit_rate": 0.8798363095238095,
+      "note": "insertion-ordered FIFO baseline (the pre-admission policy); a hit does not reorder the queue, so a scan flushes the hot set"
+    },
+    {
+      "policy": "lru",
+      "capacity": 32,
+      "trace_length": 10752,
+      "hits": 10240,
+      "misses": 512,
+      "hit_rate": 0.9523809523809523,
+      "note": "faithful LRU baseline; a hit promotes the key to most-recently-used and a miss evicts the least-recently-used key"
+    }
+  ],
+  "note": "Single-run, single-host hit-rate court over one identical scan-heavy key trace; only the eviction policy differs. This is a hit-RATE measurement, not a latency one: a higher hit rate is not a latency win. The reference court this reproduces measured admission 95.2% vs FIFO 88.0% vs LRU 95.2% on the same trace (capacity 32, 20-key hot set, 512-key scan). Admission matches LRU here because the hot set is re-referenced every scan step; the win is over the insertion-ordered FIFO, which the scan flushes."
+}

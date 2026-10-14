@@ -187,6 +187,30 @@ sh scripts/container-fsstress.sh
 Receipt: `evidence/performance/fsstress.json` (the `orfsstress` histogram of
 operations and classified errors).
 
+## 7a. Scan-resistant admission court
+
+Court: `internal/fcache` (`TestScanResistance`).
+
+Reproduces the reference volatile-cache court: one identical scan-heavy key trace
+(512-key scan interleaved with a 20-key hot set, 10,752 touches, capacity 32)
+replayed through three eviction policies, differing only in that policy.
+
+Measured (this host): **S3-FIFO 95.2%**, **FIFO 88.0%**, **LRU 95.2%** —
+reproducing the reference numbers exactly.
+
+Honest framing: this is a **hit-rate** measurement, not a latency one. On this
+interleaved trace admission **matches** LRU (the hot set is re-referenced every
+scan step) and the win is over the insertion-ordered FIFO, which the scan
+flushes. No latency win is claimed for admission.
+
+Run:
+
+```sh
+sh scripts/container-go-courts.sh   # writes evidence/performance/cache.json
+```
+
+Receipt: `evidence/performance/cache.json` (schema `orfs.performance.cache.v1`).
+
 ## 8. The frontier: measured versus not yet measured
 
 Measured today (all bounded, laboratory conditions):
@@ -200,6 +224,7 @@ Measured today (all bounded, laboratory conditions):
 | fsstress | bounded storm + POSIX extras + `verify --deep` | `evidence/performance/fsstress.json` |
 | external baseline | 4K randread p50/p99/p99.9 vs ext4/tmpfs | `evidence/performance/baseline.json` |
 | 64-thread scaling | 4K randread at 64 readers | `evidence/performance/scale.json` |
+| scan-resistant admission | S3-FIFO 95.2% vs FIFO 88.0% vs LRU 95.2% | `evidence/performance/cache.json` |
 | capacity guard | typed `CapacityExhausted` before the first byte | `evidence/recovery/capacity.json` |
 | quarantine | torn tail moved, never truncated | `evidence/recovery/quarantine.json` |
 
@@ -212,7 +237,6 @@ Explicitly not yet measured (absence is deliberate, not implied):
 | Multi-day amplification curve; profile selection by measured worth | not run |
 | Mount latency after a large (2^30-byte) history | not run (`OPERATIONS.md` §3) |
 | Group commit | not implemented |
-| S3-FIFO admission | not implemented |
 
 No performance superiority is claimed beyond the measured planner p50 figure and
 the inode-spine measurements.

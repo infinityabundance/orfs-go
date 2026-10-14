@@ -11,8 +11,8 @@ and p99 ~44x worse than the container filesystem, and ~472k IOPS at 64 readers
 against ~11.3M native. The only measured *win* is the concealed read planner's
 p50 (~2x on a warm manifested body), with p99 explicitly not claimed. Several
 courts remain unrun and are named as such in `docs/BENCH.md` §8 (F2, cross-FS
-determinism, a multi-day amplification curve, group commit, S3-FIFO admission).
-No number that a court did not measure is published.
+determinism, a multi-day amplification curve, group commit). No number that a
+court did not measure is published.
 
 ## 2. Mount latency is `Θ(retained history)`
 
