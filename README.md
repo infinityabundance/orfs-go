@@ -45,7 +45,9 @@ Working today:
 | Frozen `legacy_v0` / `current_v1` fixtures + byte-identity court | implemented |
 | `orfs init` / `inspect` / `verify [--deep]` / `recover` / `doctor` / `mount` / `manifest` / `stat` | implemented |
 | Growth/amplification, external `fio` baseline, 64-thread scaling, fsstress, capacity/quarantine, scan-resistant admission courts | implemented — receipts under `evidence/`, honest numbers in `docs/BENCH.md` |
-| F2 transport, cross-FS determinism, group commit, S3-FIFO admission | planned — see `docs/PROGRESS.md` |
+| Cross-FS determinism (identical `or.log` bytes across ext4/xfs/btrfs/tmpfs) | implemented — `evidence/correctness/cross-fs.json` |
+| pjdfstest court | implemented — 3827/8798 passing; 4971 genuine POSIX deviations outstanding (`docs/LIMITATIONS.md` §11) |
+| F2 transport, group commit, per-read allocs court; closing the pjdfstest deviations | planned — see `docs/PROGRESS.md` |
 
 Honest non-claims: the **image pixel-surface pyramid is rejected, not merely
 unimplemented** (`docs/REJECTED.md`). No performance superiority is claimed; the

@@ -39,7 +39,9 @@ its owning phase rather than pretending to work.
 | 29 | Capacity `CapacityExhausted` + quarantine-never-truncates courts + receipts | complete |
 | 30 | Multi-arch publish workflow + tagged release | complete |
 | 31 | Scan-resistant admission court (S3-FIFO vs FIFO vs LRU) | complete |
-| 32 | F2 (FUSE-over-`io_uring`); cross-FS determinism; group commit; per-read allocs court | planned |
+| 32 | F2 (FUSE-over-`io_uring`); group commit; per-read allocs court | planned |
+| 33 | Cross-FS determinism (identical authoritative log bytes across ext4/xfs/btrfs/tmpfs, fixed uuid + pinned clock) | complete |
+| 34 | pjdfstest court (upstream POSIX syscall suite vs the mount; deviations published, not allowlisted) | complete — 4971 deviations across 87 files are the tracked next work |
 
 ## Phase 14 provenance note
 

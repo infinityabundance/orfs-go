@@ -9,9 +9,11 @@ No performance superiority is claimed. The external baseline court now runs
 (`docs/BENCH.md` §5) and publishes the FUSE tax: 4K random read p50 ~24x worse
 and p99 ~44x worse than the container filesystem, and ~472k IOPS at 64 readers
 against ~11.3M native. The only measured *win* is the concealed read planner's
-p50 (~2x on a warm manifested body), with p99 explicitly not claimed. Several
-courts remain unrun and are named as such in `docs/BENCH.md` §8 (F2, cross-FS
-determinism, a multi-day amplification curve, group commit). No number that a
+p50 (~2x on a warm manifested body), with p99 explicitly not claimed. Cross-FS
+determinism is now measured and holds: identical authoritative log bytes across
+ext4/xfs/btrfs/tmpfs (§11). Several
+courts remain unrun and are named as such in `docs/BENCH.md` §8 (F2, a multi-day
+amplification curve, group commit). No number that a
 court did not measure is published.
 
 ## 2. Mount latency is `Θ(retained history)`
@@ -101,6 +103,35 @@ mount privileges) still applies.
   kernel path (an explicit exchange is available in the namespace API).
 - The `INDEX_CHECKPOINT` record is decoded and replayed into a checkpoint list
   but is not yet used to bound replay.
-- The mounted court (`scripts/mount-court.sh`) exercises the POSIX core, but the
-  external `pjdfstest` suite and an `fsx`/`fsstress`-equivalent fault-injection
-  court are not yet wired into `container-verify.sh`.
+- The mounted court (`scripts/mount-court.sh`) and the external `pjdfstest`
+  court (`scripts/container-pjdfstest.sh`) exercise the POSIX surface; the
+  conformance deviations they find are published, not allowlisted (§11).
+
+## 11. POSIX conformance is measured, and not yet clean
+
+Two conformance facts are now measured rather than asserted, and both are
+published in full.
+
+**Cross-FS determinism HOLDS.** `scripts/container-crossfs.sh` initialises an OrFS
+volume on each of ext4, xfs, btrfs, and tmpfs with a fixed UUID and a pinned
+`ORFS_CLOCK_EPOCH`, replays one identical operation sequence against each, and
+hashes every authoritative `or.log/*.seg` segment. All four backings produced the
+**identical sha256**
+`35bd5d57e1f85525238a13f1609d2c65737b37731ec14234634f4f5e8260d990`: the backing
+store does not change the bytes authority writes. Receipt:
+`evidence/correctness/cross-fs.json` (schema `orfs.correctness.crossfs.v1`).
+
+**The mounted POSIX surface deviates.** The upstream `pjdfstest` suite
+(<https://github.com/pjd/pjdfstest>, built from source) was run against an OrFS
+mount: **8798 assertions, 3827 passed, 4971 failed** across **87 test files**.
+Every failing file is listed in the receipt's `deviations` array; **none is
+allowlisted**. The categories are chmod (7), chown (5), ftruncate (3), link (7),
+mkdir (6), mkfifo (7), mknod (8), open (10), rename (13), rmdir (6), symlink (4),
+truncate (3), unlink (5), and utimensat (3) files. The same suite passes cleanly
+on tmpfs, so these are genuine OrFS POSIX deviations, not harness artifacts.
+Receipt: `evidence/performance/pjdfstest.json` (schema
+`orfs.performance.pjdfstest.v1`).
+
+Closing these deviations is the tracked next work: the Rust reference closed the
+same POSIX surface in two phases, and the Go port owns the second. No conformance
+is claimed beyond what a court measured.

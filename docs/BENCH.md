@@ -211,6 +211,60 @@ sh scripts/container-go-courts.sh   # writes evidence/performance/cache.json
 
 Receipt: `evidence/performance/cache.json` (schema `orfs.performance.cache.v1`).
 
+## 7b. Cross-FS determinism court
+
+Court: `scripts/crossfs-court.sh`, run inside a **privileged** court container
+(loop devices + `mkfs`) by `scripts/container-crossfs.sh`.
+
+Measures that the backing store cannot change the bytes authority writes. For
+each of ext4, xfs, btrfs, and tmpfs the court creates a backing, initialises an
+OrFS volume with a fixed UUID and a pinned `ORFS_CLOCK_EPOCH`, replays one
+identical deterministic operation sequence, and hashes every authoritative
+`or.log/*.seg` segment.
+
+Measured: all four backings produced the **identical segment sha256**
+`35bd5d57e1f85525238a13f1609d2c65737b37731ec14234634f4f5e8260d990`. A court where
+fewer than two backings could be compared FAILs (a one-backed "agreement" proves
+nothing), and a backing that cannot run is named, never counted as a pass.
+
+Run:
+
+```sh
+sh scripts/container-crossfs.sh
+```
+
+Receipt: `evidence/correctness/cross-fs.json` (schema
+`orfs.correctness.crossfs.v1`).
+
+## 7c. POSIX conformance court (pjdfstest)
+
+Court: the upstream [`pjdfstest`](https://github.com/pjd/pjdfstest) POSIX
+system-call suite, built from source and run against an OrFS mount inside a
+**privileged** court container by `scripts/container-pjdfstest.sh`.
+
+Measures how much of the POSIX namespace surface the mount actually conforms to.
+**The result is not clean, and it is published in full:** 8798 assertions,
+3827 passed, **4971 failed** across **87 test files**. Every failing file is
+listed in the receipt's `deviations` array; **none is allowlisted**. The failing
+categories are chmod, chown, ftruncate, link, mkdir, mkfifo, mknod, open, rename,
+rmdir, symlink, truncate, unlink, and utimensat. The same suite passes cleanly on
+tmpfs, so these are genuine OrFS POSIX deviations, not harness artifacts.
+
+A run that completes writes its receipt and exits 0 even when the suite reports
+failures (they are deviations, not a court failure); a `verify --deep` that
+reports `[FAIL]` after the run is a real integrity failure and exits 1. The
+court is part of the `container-verify.sh` gate, and closing these deviations is
+the tracked next work (`docs/LIMITATIONS.md` §11).
+
+Run:
+
+```sh
+sh scripts/container-pjdfstest.sh
+```
+
+Receipt: `evidence/performance/pjdfstest.json` (schema
+`orfs.performance.pjdfstest.v1`).
+
 ## 8. The frontier: measured versus not yet measured
 
 Measured today (all bounded, laboratory conditions):
@@ -227,13 +281,14 @@ Measured today (all bounded, laboratory conditions):
 | scan-resistant admission | S3-FIFO 95.2% vs FIFO 88.0% vs LRU 95.2% | `evidence/performance/cache.json` |
 | capacity guard | typed `CapacityExhausted` before the first byte | `evidence/recovery/capacity.json` |
 | quarantine | torn tail moved, never truncated | `evidence/recovery/quarantine.json` |
+| cross-FS determinism | identical segment sha256 across ext4/xfs/btrfs/tmpfs | `evidence/correctness/cross-fs.json` |
+| pjdfstest conformance | 3827/8798 assertions pass; 4971 deviations across 87 files (not allowlisted) | `evidence/performance/pjdfstest.json` |
 
 Explicitly not yet measured (absence is deliberate, not implied):
 
 | Frontier | State |
 | --- | --- |
 | F2 FUSE-over-`io_uring` transport; the F0-vs-F2 p50/p95/p99/p99.9 publication | not wired; F0 today (`LIMITATIONS.md` §6) |
-| Cross-FS determinism (ext4/xfs/btrfs/tmpfs identical fingerprints) | not run (needs privileged loop mounts) |
 | Multi-day amplification curve; profile selection by measured worth | not run |
 | Mount latency after a large (2^30-byte) history | not run (`OPERATIONS.md` §3) |
 | Group commit | not implemented |

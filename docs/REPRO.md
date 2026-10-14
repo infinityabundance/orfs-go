@@ -84,7 +84,17 @@ courts do not need `/dev/fuse`.
 | fsstress-equivalent + POSIX extras | `sh scripts/container-fsstress.sh` | `evidence/performance/fsstress.json` |
 | mounted POSIX court | `sh scripts/container-fuse-test.sh` | none (PASS/FAIL) |
 | recovery: capacity / quarantine | `sh scripts/container-go-courts.sh` | `evidence/recovery/capacity.json`, `evidence/recovery/quarantine.json` |
+| cross-FS determinism (ext4/xfs/btrfs/tmpfs identical log bytes) | `sh scripts/container-crossfs.sh` | `evidence/correctness/cross-fs.json` |
+| pjdfstest POSIX conformance suite | `sh scripts/container-pjdfstest.sh` | `evidence/performance/pjdfstest.json` |
 | full pre-PR gate | `sh scripts/container-verify.sh` | per-stage PASS/FAIL/SKIPPED summary |
+
+`scripts/container-crossfs.sh` and `scripts/container-pjdfstest.sh` need a
+**`--privileged`** court container (`docker_run_court_privileged` in
+`scripts/lib.sh`): the cross-FS court creates and mounts loop devices
+(`mkfs.ext4`/`xfs`/`btrfs`), and the pjdfstest court builds the suite from source
+and runs with the full device surface. Both still require `/dev/fuse` to mount
+OrFS, so a host without docker or `/dev/fuse` reports them `SKIPPED`, never a
+false pass.
 
 `sh scripts/container-verify.sh --fast` runs the cheap subset. Every stage a host
 cannot run is reported `SKIPPED`, and a `SKIPPED` stage is never counted as a

@@ -2,7 +2,8 @@
 # One-command continuous verification: the pre-PR gate.
 #
 # Runs fmt/vet, the default suite, the race detector, a bounded fuzz pass, the
-# growth courts, and the mounted FUSE/fsstress/baseline courts, printing a
+# growth courts, and the mounted FUSE/fsstress/baseline courts plus the cross-FS
+# determinism and pjdfstest courts, printing a
 # per-stage PASS/FAIL/SKIPPED summary. A stage
 # that cannot run is reported SKIPPED and is not counted as a pass: a green
 # summary never hides a court that did not actually run.
@@ -56,10 +57,16 @@ else
       run_stage "fuse (mounted POSIX court)" sh "$(dirname "$0")/container-fuse-test.sh"
       run_stage "fsstress (bounded op storm + POSIX extras)" sh "$(dirname "$0")/container-fsstress.sh"
       run_stage "baseline (fio vs ext4/tmpfs)" sh "$(dirname "$0")/container-baseline.sh"
+      run_stage "cross-fs determinism (identical log bytes across ext4/xfs/btrfs/tmpfs)" \
+        sh "$(dirname "$0")/container-crossfs.sh"
+      run_stage "pjdfstest (upstream POSIX syscall suite vs the mount)" \
+        sh "$(dirname "$0")/container-pjdfstest.sh"
     else
       skip "fuse (mounted POSIX court)" "no /dev/fuse"
       skip "fsstress (bounded op storm + POSIX extras)" "no /dev/fuse"
       skip "baseline (fio vs ext4/tmpfs)" "no /dev/fuse"
+      skip "cross-fs determinism (identical log bytes across ext4/xfs/btrfs/tmpfs)" "no /dev/fuse"
+      skip "pjdfstest (upstream POSIX syscall suite vs the mount)" "no /dev/fuse"
     fi
   else
     skip "race (concurrent immutable reads)" "--fast"
@@ -68,6 +75,8 @@ else
     skip "fuse (mounted POSIX court)" "--fast"
     skip "fsstress (bounded op storm + POSIX extras)" "--fast"
     skip "baseline (fio vs ext4/tmpfs)" "--fast"
+    skip "cross-fs determinism (identical log bytes across ext4/xfs/btrfs/tmpfs)" "--fast"
+    skip "pjdfstest (upstream POSIX syscall suite vs the mount)" "--fast"
   fi
 fi
 
