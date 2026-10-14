@@ -51,6 +51,8 @@ func run(args []string) int {
 		return cmdVerify(rest)
 	case "recover":
 		return cmdRecover(rest)
+	case "checkpoint":
+		return cmdCheckpoint(rest)
 	case "doctor":
 		return cmdDoctor(rest)
 	case "metrics":
@@ -93,6 +95,7 @@ usage: orfs <command> [flags]
   inspect <backing> [--json]
   verify <backing> [--deep] [--json]
   recover <backing> [--json]
+  checkpoint <backing> [--json]
   doctor [--capacity --backing <dir> [--reserve bytes]] [--json]
   metrics <backing> [--json] [--skip-verify]
   mount <backing> <mountpoint> [--direct-io] [--transport f0|f0-single|fuse-uring] [--readers N]
@@ -195,6 +198,46 @@ func cmdInspect(args []string) int {
 	fmt.Printf("physical bytes:    %d\n", phys)
 	fmt.Printf("inodes:            %d\n", len(v.Index().Inodes))
 	fmt.Printf("dentries:          %d\n", len(v.Index().Dentry))
+	if rep := v.MountReport(); rep != nil {
+		fmt.Printf("index source:      %s\n", rep.DiscoverySource)
+		if rep.UsedCheckpoint {
+			fmt.Printf("checkpoint root:   %d\n", rep.CheckpointRoot)
+		}
+		fmt.Printf("suffix replayed:   %d byte(s) / %d record(s)\n", rep.BytesReplayed, rep.RecordsReplayed)
+	}
+	return 0
+}
+
+// cmdCheckpoint writes an index checkpoint over the current committed index as a
+// normal committed transaction, so a later open can bound its replay to the
+// suffix after it.
+func cmdCheckpoint(args []string) int {
+	fs := newFlagSet("checkpoint")
+	asJSON := fs.Bool("json", false, "emit JSON")
+	pos, err := parseFlags(fs, args)
+	if err != nil {
+		return 2
+	}
+	if len(pos) != 1 {
+		return fail(orfserr.Invalid("checkpoint requires exactly one <backing> directory"))
+	}
+	v, err := volume.Open(pos[0], log.ReadWrite)
+	if err != nil {
+		return fail(err)
+	}
+	defer v.Close()
+	root, err := v.TakeCheckpoint()
+	if err != nil {
+		return fail(err)
+	}
+	if *asJSON {
+		fmt.Printf("{\"schema\":\"orfs.checkpoint.v1\",\"root\":%d,\"inodes\":%d,\"dentries\":%d}\n",
+			root, len(v.Index().Inodes), len(v.Index().Dentry))
+		return 0
+	}
+	fmt.Printf("checkpoint committed at root %d\n", root)
+	fmt.Printf("  index inodes:   %d\n", len(v.Index().Inodes))
+	fmt.Printf("  index dentries: %d\n", len(v.Index().Dentry))
 	return 0
 }
 

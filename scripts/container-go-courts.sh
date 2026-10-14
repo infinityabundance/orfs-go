@@ -31,4 +31,12 @@ docker_run env ORFS_EVIDENCE=1 sh -c \
 # orfs.performance.crash.v1).
 docker_run env ORFS_EVIDENCE=1 ORFS_CRASH_ITERS=1000 ORFS_CRASH_BUDGET_S=300 sh -c \
   'go test ./internal/log/ -run TestCrashConsistencyCourt -count=1'
+# Checkpoint recovery court: bound mount replay to a committed checkpoint and
+# measure the startup-work / Go-heap curve across exponentially increasing
+# retained histories (2^k committed bytes), comparing full replay, checkpoint +
+# suffix replay, and directory-assisted discovery. Asserts the bounded result
+# equals full replay at every size. Writes evidence/recovery/checkpoints.json
+# (schema orfs.recovery.checkpoints.v1).
+docker_run env ORFS_EVIDENCE=1 ORFS_RECOVERY_REPS=10 sh -c \
+  'go test ./internal/orbench/ -run TestCheckpointRecoveryCourt -count=1'
 echo "container-go-courts: PASS — receipts in evidence/performance/, evidence/recovery/, and evidence/crash.json"

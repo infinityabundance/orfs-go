@@ -17,13 +17,24 @@ amplification curve, group commit); the transport court now runs, and F2 is
 named unreachable rather than deferred (`docs/TRANSPORT.md`). No number that a
 court did not measure is published.
 
-## 2. Mount latency is `Θ(retained history)`
+## 2. Mount replay is bounded by the checkpoint interval; the open scan is not
 
-Recovery replays the committed log; it is not constant-time. A usable index
-checkpoint bounds the *replay* to a suffix, and a committed-root directory can
-skip the whole-log *discovery* scan, but neither is implemented in this build,
-so a mount after a large (2^30-byte) history is expected to be slow. The
-history-scaling court and its numbers are pending (`docs/OPERATIONS.md` §3).
+Recovery reconstructs the index by **replaying** the committed log. A usable
+index checkpoint now bounds the *replay* to the suffix after it, and the derived
+committed-root directory removes the checkpoint *discovery* scan, but the
+authoritative open (`log.Open`) still scans and validates the whole log to
+establish the committed root — so a mount is **not** constant-time. The measured
+curve (`evidence/recovery/checkpoints.json`, `docs/OPERATIONS.md` §3) shows, for
+a **write-heavy** log (large history, small namespace), full replay growing
+`Θ(committed bytes)` (7 µs → 621 µs from 2^10 to 2^20) while the directory-assisted
+index reconstruction is **flat** (10 µs → 10 µs) and the replayed suffix is a
+constant 852 bytes. For a **namespace-heavy** log the index is itself
+`Θ(history)`, so the checkpoint bounds the *replay* but not the index decode
+(3.6 ms full vs 1.5 ms checkpoint vs 0.35 ms directory at 2^20). On a trivially
+small log the checkpoint costs slightly more than it saves (as the reference also
+reports). **No mount-time bound is claimed beyond these measurements** — in
+particular the `log.Open` scan is unbounded here. A checkpoint only ever lets
+recovery skip replay work; it never changes which root is committed.
 
 ## 3. Power-loss durability is simulated only
 
@@ -115,8 +126,12 @@ mount privileges) still applies.
 - No concealed global search directory (`orfs query` reports its owning phase).
 - Rename does not yet honour `RENAME_NOREPLACE`/`RENAME_EXCHANGE` flags from the
   kernel path (an explicit exchange is available in the namespace API).
-- The `INDEX_CHECKPOINT` record is decoded and replayed into a checkpoint list
-  but is not yet used to bound replay.
+- The `INDEX_CHECKPOINT` record now bounds replay: the newest valid checkpoint is
+  loaded and only the suffix after it is replayed, with an explicit corrupt
+  fallback policy and a derived committed-root directory for discovery. Named
+  *historical* roots (`SNAPSHOT_ROOT` indexing, `orfs snapshot`) are still not
+  materialised: `SNAPSHOT_ROOT` is decoded into an alias table but a historical
+  view is not yet served from it.
 - The mounted court (`scripts/mount-court.sh`) and the external `pjdfstest`
   court (`scripts/container-pjdfstest.sh`) exercise the POSIX surface; the
   conformance deviations they find are published, not allowlisted (§11).

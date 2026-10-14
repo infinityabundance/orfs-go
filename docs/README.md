@@ -27,6 +27,7 @@ capability, it is backed by code and, where a behaviour is claimed, by a court i
 | [`WORM.md`](WORM.md) | The append-only WORM audit-log-sink case study, the metrics surface, and how to scrape it |
 | [`TRANSPORT.md`](TRANSPORT.md) | F0/F1/F2, what this build serves, the measured F0 comparison, and why F2 is not reachable here |
 | [`MANIFESTATION.md`](MANIFESTATION.md) | The concealed-expansion read path: identity, certification, fallback, measured results |
+| [`SNAPSHOTS.md`](SNAPSHOTS.md) | Index checkpoints: the snapshot format, the committed-root directory, validity/fallback policy, and the measured startup curve |
 | [`LIMITATIONS.md`](LIMITATIONS.md) | Every standing non-claim, so absence is explicit |
 | [`SECURITY.md`](SECURITY.md) | Threat model; integrity is not authentication |
 | [`REJECTED.md`](REJECTED.md) | Designs decided against, with reasons |

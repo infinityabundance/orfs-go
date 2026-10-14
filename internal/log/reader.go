@@ -91,7 +91,23 @@ func (r *CanonicalReader) Close() error {
 // given extents, calling fn with each record, its logical offset, and its exact
 // framed bytes. It opens each segment read-only and touches nothing.
 func ReadRecords(dir string, extents []segment.Extent, end uint64, fn func(rec *record.Record, offset uint64, raw []byte) error) error {
-	var off uint64
+	return ReadRecordsRange(dir, extents, 0, end, fn)
+}
+
+// ReadRecordsRange iterates the validated canonical records in [start, end)
+// across the given extents. It seeks straight to `start` and decodes no byte
+// before it, so the decoded span is exactly `end - start` regardless of how much
+// history precedes it. `start` must be a record boundary (in practice a
+// committed transaction boundary); a start that does not sit on a record frame
+// is refused rather than silently applying a garbled record.
+func ReadRecordsRange(dir string, extents []segment.Extent, start, end uint64, fn func(rec *record.Record, offset uint64, raw []byte) error) error {
+	if start > end {
+		return orfserr.Corrupt("record range start %d exceeds end %d", start, end)
+	}
+	if start == end {
+		return nil
+	}
+	off := start
 	for _, e := range extents {
 		if off >= end {
 			break
@@ -111,7 +127,7 @@ func ReadRecords(dir string, extents []segment.Extent, end uint64, fn func(rec *
 		if segLimit > end-e.ID {
 			segLimit = end - e.ID
 		}
-		var pos int64
+		pos := int64(off - e.ID)
 		for uint64(pos) < segLimit {
 			rec, raw, total, err := record.ReadFrameRawAt(seg, pos, int64(segLimit))
 			if err != nil {

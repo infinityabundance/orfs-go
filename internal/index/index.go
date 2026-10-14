@@ -10,10 +10,8 @@ package index
 import (
 	"sort"
 
-	"github.com/infinityabundance/orfs-go/internal/log"
 	"github.com/infinityabundance/orfs-go/internal/orfserr"
 	"github.com/infinityabundance/orfs-go/internal/record"
-	"github.com/infinityabundance/orfs-go/internal/segment"
 )
 
 // Inode is a reconstructed filesystem object.
@@ -80,23 +78,6 @@ func New() *Index {
 		Snapshots:   make(map[string]uint64),
 		NextInodeID: record.RootInode,
 	}
-}
-
-// Replay rebuilds the index by replaying the committed prefix [0, end) of the
-// log at dir.
-func Replay(dir string, extents []segment.Extent, end uint64) (*Index, error) {
-	idx := New()
-	if end == 0 {
-		return nil, orfserr.Corrupt("replaying an empty log")
-	}
-	err := log.ReadRecords(dir, extents, end, func(rec *record.Record, offset uint64, raw []byte) error {
-		idx.CommittedRecords++
-		return idx.Apply(rec, offset)
-	})
-	if err != nil {
-		return nil, err
-	}
-	return idx, nil
 }
 
 // Inode returns an inode by id.

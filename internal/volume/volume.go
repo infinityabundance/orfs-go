@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/infinityabundance/orfs-go/internal/capacity"
+	"github.com/infinityabundance/orfs-go/internal/checkpoint"
 	"github.com/infinityabundance/orfs-go/internal/index"
 	"github.com/infinityabundance/orfs-go/internal/log"
 	"github.com/infinityabundance/orfs-go/internal/orfserr"
@@ -85,6 +86,16 @@ type Volume struct {
 
 	reader *log.CanonicalReader
 	index  *index.Index
+
+	// Checkpoint policy (opt-in) and the report of how the index was
+	// reconstructed at open.
+	cpEveryTxns         uint64
+	cpEveryBytes        uint64
+	cpCorrupt           checkpoint.CorruptPolicy
+	cpForceFull         bool
+	sinceCheckpointTxns uint64
+	lastCheckpointRoot  uint64
+	mountReport         *checkpoint.Report
 }
 
 // InitOptions configures volume creation.
@@ -98,7 +109,7 @@ type InitOptions struct {
 }
 
 // Init creates a fresh volume.
-func Init(backing string, opts InitOptions) (*Volume, error) {
+func Init(backing string, opts InitOptions, vopts ...Option) (*Volume, error) {
 	if opts.SegmentSize == 0 {
 		opts.SegmentSize = record.DefaultSegmentSize
 	}
@@ -129,7 +140,8 @@ func Init(backing string, opts InitOptions) (*Volume, error) {
 		return nil, err
 	}
 	v := &Volume{Backing: backing, Meta: meta, Log: l}
-	if err := v.buildIndex(); err != nil {
+	applyVolumeOptions(v, vopts)
+	if err := v.buildIndex(true); err != nil {
 		l.Close()
 		return nil, err
 	}
@@ -137,7 +149,7 @@ func Init(backing string, opts InitOptions) (*Volume, error) {
 }
 
 // Open opens an existing volume. A read-only open modifies not a single byte.
-func Open(backing string, mode log.Mode) (*Volume, error) {
+func Open(backing string, mode log.Mode, vopts ...Option) (*Volume, error) {
 	meta, ok, err := readMeta(backing)
 	if err != nil {
 		return nil, err
@@ -161,25 +173,40 @@ func Open(backing string, mode log.Mode) (*Volume, error) {
 		meta = Meta{FormatVersion: g.FormatVersion, UUID: g.UUID, SegmentSize: g.SegmentSize}
 	}
 	v := &Volume{Backing: backing, Meta: meta, Log: l}
-	if err := v.buildIndex(); err != nil {
+	applyVolumeOptions(v, vopts)
+	if err := v.buildIndex(mode == log.ReadWrite); err != nil {
 		l.Close()
 		return nil, err
 	}
 	return v, nil
 }
 
-func (v *Volume) buildIndex() error {
-	idx, err := index.Replay(log.Dir(v.Backing), v.Log.Extents(), v.Log.CommittedRoot())
+// buildIndex reconstructs the committed index, preferring the newest valid
+// index checkpoint and replaying only the suffix after it. `publish` refreshes
+// the derived committed-root directory (writable opens only).
+func (v *Volume) buildIndex(publish bool) error {
+	idx, rep, err := checkpoint.Mount(v.Log, checkpoint.Options{
+		Corrupt:         v.cpCorrupt,
+		UseDirectory:    true,
+		Publish:         publish,
+		ForceFullReplay: v.cpForceFull,
+	})
 	if err != nil {
 		return err
 	}
 	v.index = idx
+	v.mountReport = rep
+	v.lastCheckpointRoot = v.Log.CommittedRoot()
 	v.reader = log.NewCanonicalReader(log.Dir(v.Backing), v.Log.Extents())
 	return nil
 }
 
 // Index returns the reconstructed namespace at the committed root.
 func (v *Volume) Index() *index.Index { return v.index }
+
+// MountReport returns how the committed index was reconstructed at open
+// (checkpoint vs full replay, discovery source, bytes replayed).
+func (v *Volume) MountReport() *checkpoint.Report { return v.mountReport }
 
 // Reader returns the canonical byte reader (used to read DATA_EXTENT bytes).
 func (v *Volume) Reader() *log.CanonicalReader { return v.reader }
@@ -201,28 +228,103 @@ func (v *Volume) Sync() error {
 	return nil
 }
 
-// Publish commits a transaction's data records and re-replays the tail into the
-// live index so the in-memory view equals a from-scratch rebuild.
+// Publish commits a transaction's data records, extends the live index by the
+// newly committed suffix, and (when the opt-in policy is due) writes a
+// checkpoint as a further committed transaction.
 func (v *Volume) Publish(data []*record.Record) (uint64, error) {
+	root, err := v.commit(data)
+	if err != nil {
+		return 0, err
+	}
+	v.maybeCheckpoint(root)
+	return root, nil
+}
+
+// commit writes one transaction and replays only the newly committed suffix
+// [prevRoot, root) into the live index, so the work per commit is proportional
+// to the transaction, never to the retained history.
+func (v *Volume) commit(data []*record.Record) (uint64, error) {
 	prevRoot := v.Log.CommittedRoot()
 	root, err := v.Log.Publish(data)
 	if err != nil {
 		return 0, err
 	}
-	// The canonical reader must see the bytes that just became reachable.
 	extents := v.Log.Extents()
 	v.reader.UpdateExtents(extents)
-	// Replay only the newly committed suffix [prevRoot, root) into the index.
-	err = log.ReadRecords(log.Dir(v.Backing), extents, root, func(rec *record.Record, offset uint64, raw []byte) error {
-		if offset < prevRoot {
-			return nil
-		}
-		return v.index.Apply(rec, offset)
-	})
-	if err != nil {
+	if _, _, err := v.index.ReplayRange(log.Dir(v.Backing), extents, prevRoot, root); err != nil {
 		return 0, err
 	}
 	return root, nil
+}
+
+// TakeCheckpoint writes an index checkpoint over the current committed index as
+// its own committed transaction. The payload root names the committed boundary
+// the snapshot reflects (the root current at write time); the record is then a
+// normal committed record inside the prefix. It never rewrites a committed byte.
+func (v *Volume) TakeCheckpoint() (uint64, error) {
+	if v.Log == nil {
+		return 0, orfserr.ReadOnly("no log")
+	}
+	doc, digest, err := index.EncodeSnapshot(v.index)
+	if err != nil {
+		return 0, err
+	}
+	payload := record.IndexCheckpoint{
+		Root:        v.index.Root,
+		InodeCount:  uint64(len(v.index.Inodes)),
+		DentryCount: uint64(len(v.index.Dentry)),
+		Digest:      digest,
+		IndexBytes:  doc,
+	}.Encode()
+	if uint64(len(payload)) > record.MaxPayloadLen {
+		return 0, orfserr.NotSupported("index checkpoint payload %d exceeds the %d-byte record limit", len(payload), record.MaxPayloadLen)
+	}
+	rec := &record.Record{
+		Header:  record.Header{RecordType: record.TypeIndexCheckpoint, PayloadLength: uint64(len(payload)), InodeID: record.RootInode},
+		Payload: payload,
+	}
+	root, err := v.commit([]*record.Record{rec})
+	if err != nil {
+		return 0, err
+	}
+	v.lastCheckpointRoot = root
+	v.sinceCheckpointTxns = 0
+	return root, nil
+}
+
+// maybeCheckpoint writes a checkpoint when the opt-in policy is due. It is
+// best-effort: a failed checkpoint never fails the commit it followed, and
+// changes nothing authoritative.
+func (v *Volume) maybeCheckpoint(root uint64) {
+	if v.cpEveryTxns == 0 && v.cpEveryBytes == 0 {
+		return
+	}
+	v.sinceCheckpointTxns++
+	due := false
+	if v.cpEveryTxns > 0 && v.sinceCheckpointTxns >= v.cpEveryTxns {
+		due = true
+	}
+	if v.cpEveryBytes > 0 && root-v.lastCheckpointRoot >= v.cpEveryBytes {
+		due = true
+	}
+	if !due {
+		return
+	}
+	_, _ = v.TakeCheckpoint()
+}
+
+// applyVolumeOptions merges the environment default with any explicit options.
+func applyVolumeOptions(v *Volume, opts []Option) {
+	o := defaultOptions()
+	for _, fn := range opts {
+		if fn != nil {
+			fn(&o)
+		}
+	}
+	v.cpEveryTxns = o.CheckpointEveryTransactions
+	v.cpEveryBytes = o.CheckpointEveryBytes
+	v.cpCorrupt = o.CheckpointCorrupt
+	v.cpForceFull = o.ForceFullReplay
 }
 
 func randomUUID() ([16]byte, error) {

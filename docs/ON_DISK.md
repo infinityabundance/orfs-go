@@ -15,12 +15,14 @@ untrusted bytes; every field is decoded explicitly (`internal/record`).
 │   ├── 0000000000000000.seg
 │   ├── ...
 │   └── quarantine/      retained abandoned segment tails (never canonical)
+├── index/               derived committed-root directory (rebuildable)
 └── .or_bloom/           concealed acceleration structures (Plane C; derived)
 ```
 
-`.or_bloom/` is **derived**: it is not authoritative, is not checksummed by the
-log, and deleting it changes nothing recoverable. Its layout is specified in
-`docs/MANIFESTATION.md` §2.
+`.or_bloom/` and `index/` are **derived**: they are not authoritative, are not
+checksummed by the log, and deleting them changes nothing recoverable.
+`.or_bloom/` is specified in `docs/MANIFESTATION.md` §2; `index/` (the
+committed-root directory) in `docs/SNAPSHOTS.md` §5 and §4.1 below.
 
 ## 2. Segments
 
@@ -119,6 +121,30 @@ digit; there is no separate version field.
 | `INDEX_CHECKPOINT` | `ICP1` | `root:u64`, `inode_count:u64`, `dentry_count:u64`, `digest:[32]`, `index_len:u32`, index_bytes, crc |
 
 A fixed `time` field is `Timespec{secs:i64, nanos:u32}` (nanosecond granularity).
+
+### 4.1 `INDEX_CHECKPOINT` and its embedded snapshot
+
+The `INDEX_CHECKPOINT` payload is
+`root:u64`, `inode_count:u64`, `dentry_count:u64`, `digest:[32]`,
+`index_len:u32`, `index_bytes` (`index_len` bytes), `crc32c:u32`. The record
+envelope is unchanged; the embedded document is a **derived accelerator**, never
+authority.
+
+`index_bytes` is a canonical, versioned snapshot document
+(`index.EncodeSnapshot`/`DecodeSnapshot`, format `OIXS` v1): `root`,
+`next_inode_id`, `committed_records`, `max_tx_id`, then the inode, directory-entry,
+named-snapshot, and recorded-checkpoint tables in a fixed order, ending in a
+32-byte BLAKE3 self-digest over every preceding byte. `digest` records the same
+value. A reader recomputes the self-digest before trusting a field. See
+`docs/SNAPSHOTS.md` §2 for the full layout and §3 for the validity rules.
+
+### 4.2 The derived committed-root directory (`index/`)
+
+`index/committed-root.bin` (atomic, CRC32C-framed) records the committed root a
+scan covered and the ascending offsets of the checkpoints it found. It is
+derived and rebuildable; a missing/hole/over-claiming/foreign directory is
+distrusted and the log is scanned. Layout and distrust rules: `docs/SNAPSHOTS.md`
+§5.
 
 **Subject-inode rule.** For a payload that carries `inode_id` (`INODE_*`,
 `XATTR_*`, `SYMLINK_CREATE`), the subject is the payload id when non-zero, else
