@@ -292,6 +292,45 @@ sh scripts/container-pjdfstest.sh
 Receipt: `evidence/performance/pjdfstest.json` (schema
 `orfs.performance.pjdfstest.v1`).
 
+## 7d. Group commit court
+
+Court: `internal/log` (`TestGroupCommitCourt`), run inside the court container by
+`scripts/container-go-courts.sh` with `ORFS_EVIDENCE=1`.
+
+Measures publish-latency `p50`/`p99` and throughput for N concurrent
+single-transaction writers against one `Log`, with group commit **OFF** (one
+durability barrier per publish) versus **ON** (one `fsync` and one watermark
+write per batch, bounded by a max count and a max wait). Each transaction keeps
+its own committed root and its own contiguous sequence numbers, and the bytes
+written are identical to a per-publish run — only the moment of the barrier
+moves. The court also probes the uncontended cost of a single publish so the
+reader can see how much headroom batching actually has.
+
+Run:
+
+```sh
+sh scripts/container-go-courts.sh   # writes evidence/performance/groupcommit.json
+```
+
+Receipt: `evidence/performance/groupcommit.json` (schema
+`orfs.performance.groupcommit.v1`).
+
+Measured (this host, container overlay/ext4, 64 writers × 16 transactions,
+`maxBatch=64`, `maxWait=2 ms`, metadata-sized transactions):
+
+| arm | p50 | p99 | throughput |
+| --- | ---: | ---: | ---: |
+| OFF (barrier per publish) | 1,061,159 ns | 2,199,864 ns | 54,134 ops/s |
+| ON (barrier per batch) | 236,601 ns | 571,937 ns | 233,352 ops/s |
+
+That is **4.31× throughput and 4.49× better p50**. The win is honest, not the
+ideal 64× a full batch barrier would give: on this backing an *uncontended*
+single publish (encode + append + one `fsync`) costs only **17,943 ns**, so the
+ON arm is CPU-bound at ~233k ops/s rather than barrier-bound. The win therefore
+tracks the backing store's `fsync` cost — on a backing with millisecond `fsync`
+it would approach the batch factor, and on `tmpfs`, where `fsync` is nearly free,
+it would be small or absent. Stated plainly rather than inflated.
+
 ## 8. The frontier: measured versus not yet measured
 
 Measured today (all bounded, laboratory conditions):
@@ -311,6 +350,7 @@ Measured today (all bounded, laboratory conditions):
 | quarantine | torn tail moved, never truncated | `evidence/recovery/quarantine.json` |
 | cross-FS determinism | identical segment sha256 across ext4/xfs/btrfs/tmpfs | `evidence/correctness/cross-fs.json` |
 | pjdfstest conformance | 8798/8798 assertions pass; 0 deviations | `evidence/performance/pjdfstest.json` |
+| group commit | 4.31× throughput / 4.49× better p50 vs a barrier per publish (bounded by the backing store's fsync cost) | `evidence/performance/groupcommit.json` |
 
 Explicitly not yet measured (absence is deliberate, not implied):
 
@@ -319,7 +359,6 @@ Explicitly not yet measured (absence is deliberate, not implied):
 | F2 FUSE-over-`io_uring` transport | **not reachable from pure Go via go-fuse** — the kernel supports it (probed live), the linked library does not; the measured F0 comparison is published (`TRANSPORT.md`, §6b) |
 | Multi-day amplification curve; profile selection by measured worth | not run |
 | Mount latency after a large (2^30-byte) history | not run (`OPERATIONS.md` §3) |
-| Group commit | not implemented |
 
 No performance superiority is claimed beyond the measured planner p50 figure and
 the inode-spine measurements.

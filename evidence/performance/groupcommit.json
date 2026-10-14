@@ -1,0 +1,36 @@
+{
+  "arms": [
+    {
+      "group_commit": false,
+      "ops": 1024,
+      "wall_ns": 18916077,
+      "throughput_ops_per_sec": 54133.84604006423,
+      "p50_ns": 1061159,
+      "p99_ns": 2199864,
+      "p999_ns": 2274514,
+      "mean_ns": 820764
+    },
+    {
+      "group_commit": true,
+      "ops": 1024,
+      "wall_ns": 4388217,
+      "throughput_ops_per_sec": 233352.17925640414,
+      "p50_ns": 236601,
+      "p99_ns": 571937,
+      "p999_ns": 572969,
+      "mean_ns": 269799
+    }
+  ],
+  "barrier_probe_mean_ns": 17943,
+  "config": {
+    "max_batch": 64,
+    "max_wait_us": 2000,
+    "ops_per_writer": 16,
+    "payload_bytes": 0,
+    "total_ops": 1024,
+    "writers": 64
+  },
+  "method": "N concurrent single-transaction publishers against one Log; OFF = one durability barrier per publish, ON = one barrier per batch (bounded by max count and max wait)",
+  "note": "the win comes only from fewer fsync barriers, so it tracks the backing store's fsync cost; a batch of up to 64 transactions shares one barrier. On this backing an uncontended single publish (encode+append+one fsync) costs 17943 ns, so the win is bounded by both the barrier cost and the per-batch CPU to frame/append the batch. Measured throughput_on/throughput_off=4.31x, p50_off/p50_on=4.49x. The OFF arm is the honest baseline: without group commit, concurrent publishes serialize and each pays its own fsync. Run inside the court container (overlay/ext4) where fsync has real cost; on tmpfs the win is expected to be small or absent.",
+  "schema": "orfs.performance.groupcommit.v1"
+}

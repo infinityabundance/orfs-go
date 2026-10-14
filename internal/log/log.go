@@ -3,6 +3,7 @@ package log
 import (
 	"os"
 	"path/filepath"
+	"sync"
 
 	"lukechampine.com/blake3"
 
@@ -63,11 +64,22 @@ type Log struct {
 	cap *capacity.Governor
 
 	durableWatermark *wm.Watermark
+
+	// Group commit (opt-in). When group is non-nil, Publish delegates to it so
+	// concurrent publishes share one durability barrier. pubMu serialises the
+	// per-publish path when group commit is off (concurrent, unbatched writers).
+	pubMu    sync.Mutex
+	group    *groupCommitter
+	groupCfg *groupConfig
+
+	// syncHook is the fsync seam. It is nil in production; a test may install a
+	// fake to force a barrier failure without touching the on-disk format.
+	syncHook func() error
 }
 
 // Create initialises a fresh log: it creates the directory and segment 0, writes
 // the framed genesis record, fsyncs, and persists an initial watermark.
-func Create(backing string, genesis record.Genesis) (*Log, error) {
+func Create(backing string, genesis record.Genesis, opts ...Option) (*Log, error) {
 	dir := Dir(backing)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, orfserr.IO(err, "create log directory %s", dir)
@@ -133,12 +145,13 @@ func Create(backing string, genesis record.Genesis) (*Log, error) {
 		seg.Close()
 		return nil, err
 	}
+	applyOptions(l, opts)
 	return l, nil
 }
 
 // Open scans, validates, then opens a log. A writable open quarantines a
 // retained tail (moving, never truncating) and continues in a fresh segment.
-func Open(backing string, mode Mode) (*Log, error) {
+func Open(backing string, mode Mode, opts ...Option) (*Log, error) {
 	dir := Dir(backing)
 	scan, err := ScanLog(dir)
 	if err != nil {
@@ -224,11 +237,16 @@ func Open(backing string, mode Mode) (*Log, error) {
 		l.recovery = RecoveryDisposition{Clean: true}
 	}
 	l.cap.ResolveFromBacking(dir, l.appendPos())
+	applyOptions(l, opts)
 	return l, nil
 }
 
-// Close closes the writer.
+// Close stops the group committer (if any) and closes the writer. It must not
+// be called concurrently with Publish.
 func (l *Log) Close() error {
+	if l.group != nil {
+		l.group.close()
+	}
 	if l.writer != nil {
 		return l.writer.Close()
 	}
@@ -291,10 +309,25 @@ func (l *Log) PhysicalBytes() (uint64, error) {
 	return total, nil
 }
 
+// preparedTx is a fully framed transaction ready to append: TX_BEGIN, the data
+// records, and a TX_COMMIT whose bracket checksum covers the exact bytes. The
+// frame bytes are identical to a per-publish commit; only the moment of the
+// durability barrier differs.
+type preparedTx struct {
+	frames       [][]byte
+	txID         uint64
+	commitSeq    uint64
+	bracketBytes uint64
+	grandTotal   uint64
+}
+
 // Publish writes one committed transaction: TX_BEGIN, the data records, and a
 // TX_COMMIT whose bracket is verified against the exact bytes written. The whole
 // framed transaction is admitted against the capacity guard before the first
 // byte is written.
+//
+// With group commit enabled (WithGroupCommit / ORFS_GROUP_COMMIT=1), concurrent
+// Publish calls are coalesced behind one durability barrier.
 func (l *Log) Publish(data []*record.Record) (uint64, error) {
 	if l.mode == ReadOnly {
 		return 0, orfserr.ReadOnly("log opened read-only")
@@ -302,16 +335,48 @@ func (l *Log) Publish(data []*record.Record) (uint64, error) {
 	if degraded, reason := l.cap.Degraded(); degraded {
 		return 0, orfserr.ReadOnly("volume degraded: %s", reason)
 	}
+	if l.group != nil {
+		return l.group.publish(data)
+	}
+	l.pubMu.Lock()
+	defer l.pubMu.Unlock()
+	return l.publishOne(data)
+}
 
-	txID := l.maxTxID + 1
+// publishOne commits a single transaction with its own barrier. Callers must
+// hold pubMu (or be the single group committer).
+func (l *Log) publishOne(data []*record.Record) (uint64, error) {
+	p, err := l.prepareTx(data, l.maxTxID+1, l.nextSeq, l.appendPos())
+	if err != nil {
+		return 0, err
+	}
+	for _, f := range p.frames {
+		if err := l.writeFrame(f); err != nil {
+			return 0, err
+		}
+	}
+	if err := l.syncWriter(); err != nil {
+		return 0, err
+	}
+	l.applyTx(p, l.appendPos())
+	if err := l.persistWatermark(); err != nil {
+		return 0, err
+	}
+	return l.committedRoot, nil
+}
 
+// prepareTx builds the frames of one transaction for an explicit transaction id,
+// sequence base, and append position. It performs the whole-transaction capacity
+// pre-flight against pos before any byte is written, and never mutates log
+// state. The projected append position advances by grandTotal.
+func (l *Log) prepareTx(data []*record.Record, txID, seq, pos uint64) (*preparedTx, error) {
 	beginTotal := uint64(record.EnvelopeOverhead + record.TxBeginPayloadLen)
 	bracketBytes := beginTotal
 	dataTotals := make([]uint64, len(data))
 	for i, r := range data {
 		t, err := r.Header.TotalLen()
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 		dataTotals[i] = t
 		bracketBytes += t
@@ -321,13 +386,12 @@ func (l *Log) Publish(data []*record.Record) (uint64, error) {
 
 	// Capacity pre-flight: entire framed transaction, before any byte.
 	if err := l.cap.CheckBackingReserve(l.dir, grandTotal); err != nil {
-		return 0, err
+		return nil, err
 	}
-	if err := l.cap.CheckAuthoritative(l.appendPos(), grandTotal); err != nil {
-		return 0, err
+	if err := l.cap.CheckAuthoritative(pos, grandTotal); err != nil {
+		return nil, err
 	}
 
-	seq := l.nextSeq
 	beginPayload := record.TxBegin{
 		TransactionID:       txID,
 		ExpectedByteLength:  bracketBytes,
@@ -345,7 +409,7 @@ func (l *Log) Publish(data []*record.Record) (uint64, error) {
 	}
 	beginFrame, err := begin.Encode()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	hash := blake3.New(record.BracketChecksumLen, nil)
 	hash.Write(beginFrame)
@@ -358,10 +422,10 @@ func (l *Log) Publish(data []*record.Record) (uint64, error) {
 		r.Header.TransactionID = txID
 		f, err := r.Encode()
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 		if uint64(len(f)) != dataTotals[i] {
-			return 0, orfserr.Invalid("data record %d framed length %d != projected %d", i, len(f), dataTotals[i])
+			return nil, orfserr.Invalid("data record %d framed length %d != projected %d", i, len(f), dataTotals[i])
 		}
 		hash.Write(f)
 		frames = append(frames, f)
@@ -388,29 +452,36 @@ func (l *Log) Publish(data []*record.Record) (uint64, error) {
 	}
 	commitFrame, err := commit.Encode()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	frames = append(frames, commitFrame)
 
-	for _, f := range frames {
-		if err := l.writeFrame(f); err != nil {
-			return 0, err
-		}
-	}
-	if err := l.writer.Sync(); err != nil {
-		return 0, err
-	}
+	return &preparedTx{
+		frames:       frames,
+		txID:         txID,
+		commitSeq:    commitSeq,
+		bracketBytes: bracketBytes,
+		grandTotal:   grandTotal,
+	}, nil
+}
 
-	l.nextSeq = commitSeq + 1
-	l.committedRoot = l.appendPos()
+// applyTx advances the committed prefix for one transaction whose bytes are
+// durable through root.
+func (l *Log) applyTx(p *preparedTx, root uint64) {
+	l.nextSeq = p.commitSeq + 1
+	l.committedRoot = root
 	l.committedRecords = l.nextSeq
-	l.boundaries = append(l.boundaries, l.committedRoot)
-	l.maxTxID = txID
+	l.boundaries = append(l.boundaries, root)
+	l.maxTxID = p.txID
+}
 
-	if err := l.persistWatermark(); err != nil {
-		return 0, err
+// syncWriter takes the durability barrier. The syncHook seam lets a test force
+// a barrier failure.
+func (l *Log) syncWriter() error {
+	if l.syncHook != nil {
+		return l.syncHook()
 	}
-	return l.committedRoot, nil
+	return l.writer.Sync()
 }
 
 // writeFrame appends one framed record, rolling over to a fresh segment when it
