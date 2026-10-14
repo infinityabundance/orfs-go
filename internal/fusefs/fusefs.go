@@ -29,10 +29,9 @@ import (
 
 // MountOptions configures a mount.
 type MountOptions struct {
-	AllowOther         bool
-	ReadOnly           bool
-	DefaultPermissions bool
-	DirectIO           bool
+	AllowOther bool
+	ReadOnly   bool
+	DirectIO   bool
 	// AttrTTLSeconds/EntryTTLSeconds set the kernel's attribute and entry cache
 	// lifetimes. A nil pointer leaves go-fuse's default; a pointer to 0 forces
 	// every path walk and getattr back through the daemon, which is what the
@@ -92,9 +91,14 @@ func (s *Server) Mount(mnt string) (*fuse.Server, error) {
 	if s.opt.AllowOther {
 		opts.MountOptions.AllowOther = true
 	}
-	if s.opt.DefaultPermissions {
-		opts.MountOptions.Options = append(opts.MountOptions.Options, "default_permissions")
-	}
+	// The kernel must enforce the inode's DAC for every type whose open() is never
+	// routed to the daemon: a FIFO, socket, or device node is opened by the
+	// kernel's special-file handlers, and without default_permissions FUSE's
+	// permission op is a no-op, so an otherwise-uncheckable mode would still open.
+	// default_permissions makes the kernel check the mode/uid/gid the daemon
+	// reports; the daemon's own checks remain authoritative for the operations it
+	// does see.
+	opts.MountOptions.Options = append(opts.MountOptions.Options, "default_permissions")
 	if s.opt.AttrTTLSeconds != nil {
 		d := seconds(*s.opt.AttrTTLSeconds)
 		opts.AttrTimeout = &d
@@ -123,6 +127,7 @@ var _ = (fs.NodeWriter)((*node)(nil))
 var _ = (fs.NodeOpener)((*node)(nil))
 var _ = (fs.NodeCreater)((*node)(nil))
 var _ = (fs.NodeMkdirer)((*node)(nil))
+var _ = (fs.NodeMknoder)((*node)(nil))
 var _ = (fs.NodeUnlinker)((*node)(nil))
 var _ = (fs.NodeRmdirer)((*node)(nil))
 var _ = (fs.NodeRenamer)((*node)(nil))
@@ -189,16 +194,42 @@ func modeOf(in *index.Inode) uint32 {
 		t = syscall.S_IFDIR
 	case record.KindSymlink:
 		t = syscall.S_IFLNK
+	case record.KindFifo:
+		t = syscall.S_IFIFO
+	case record.KindChar:
+		t = syscall.S_IFCHR
+	case record.KindBlock:
+		t = syscall.S_IFBLK
+	case record.KindSocket:
+		t = syscall.S_IFSOCK
 	default:
 		t = syscall.S_IFREG
 	}
 	return t | (in.Mode & 0o7777)
 }
 
+// kindOf maps a mode's file-type bits to the record inode kind. A regular file
+// (no type bits) maps to KindFile so mknod(2) of a regular file falls back to a
+// create.
+func kindOf(mode uint32) uint8 {
+	switch mode & syscall.S_IFMT {
+	case syscall.S_IFIFO:
+		return record.KindFifo
+	case syscall.S_IFCHR:
+		return record.KindChar
+	case syscall.S_IFBLK:
+		return record.KindBlock
+	case syscall.S_IFSOCK:
+		return record.KindSocket
+	}
+	return record.KindFile
+}
+
 func fillAttr(out *fuse.Attr, in *index.Inode) {
 	out.Ino = in.ID
 	out.Mode = modeOf(in)
 	out.Size = in.Size
+	out.Rdev = uint32(in.Rdev)
 	out.Nlink = in.Nlink
 	out.Owner = fuse.Owner{Uid: in.UID, Gid: in.GID}
 	out.Atime = uint64(in.Atime.Secs)
@@ -388,6 +419,28 @@ func (n *node) Create(ctx context.Context, name string, flags, mode uint32, out 
 func (n *node) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
 	cred := credOf(ctx)
 	in, err := n.s.ns.Mkdir(cred, n.id, name, mode, cred.UID, cred.GID)
+	if err != nil {
+		return nil, errno(err)
+	}
+	fillAttr(&out.Attr, in)
+	child := n.NewInode(ctx, &node{id: in.ID, s: n.s}, stableAttr(in))
+	return child, 0
+}
+
+// Mknod creates a special file (FIFO, socket, or device node). The kernel applies
+// the umask before the request, and provides the type through mode's S_IFMT bits.
+func (n *node) Mknod(ctx context.Context, name string, mode, rdev uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	cred := credOf(ctx)
+	kind := kindOf(mode)
+	if kind == record.KindFile {
+		in, err := n.s.ns.Create(cred, n.id, name, mode&0o7777, cred.UID, cred.GID)
+		if err != nil {
+			return nil, errno(err)
+		}
+		fillAttr(&out.Attr, in)
+		return n.NewInode(ctx, &node{id: in.ID, s: n.s}, stableAttr(in)), 0
+	}
+	in, err := n.s.ns.Mknod(cred, n.id, name, kind, mode&0o7777, uint64(rdev), cred.UID, cred.GID)
 	if err != nil {
 		return nil, errno(err)
 	}

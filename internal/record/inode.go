@@ -78,6 +78,96 @@ func DecodeInodeCreate(b []byte) (InodeCreate, error) {
 	return t, nil
 }
 
+// MknodCreate is the fixed 88-byte MKNOD_CREATE payload. It mirrors
+// INODE_CREATE's field layout with the device number in the Size slot: a FIFO,
+// socket, or device node carries identity and metadata but no content.
+type MknodCreate struct {
+	InodeID    uint64
+	Generation uint64
+	Kind       uint8
+	Mode       uint32
+	UID        uint32
+	GID        uint32
+	Nlink      uint32
+	Rdev       uint64
+	Atime      Timespec
+	Mtime      Timespec
+	Ctime      Timespec
+}
+
+// Encode renders the MKNOD_CREATE payload.
+func (t MknodCreate) Encode() []byte {
+	b := make([]byte, MknodCreatePayloadLen)
+	putU32(b[0:4], MagicMknodCreate)
+	putU64(b[4:12], t.InodeID)
+	putU64(b[12:20], t.Generation)
+	putU8(b[20:21], t.Kind)
+	// bytes [21,24) are zero padding, not read.
+	putU32(b[24:28], t.Mode)
+	putU32(b[28:32], t.UID)
+	putU32(b[32:36], t.GID)
+	putU32(b[36:40], t.Nlink)
+	putU64(b[40:48], t.Rdev)
+	putTimespec(b[48:60], t.Atime)
+	putTimespec(b[60:72], t.Mtime)
+	putTimespec(b[72:84], t.Ctime)
+	putU32(b[84:88], CRC32C(b[0:84]))
+	return b
+}
+
+// DecodeMknodCreate parses a MKNOD_CREATE payload.
+func DecodeMknodCreate(b []byte) (MknodCreate, error) {
+	var t MknodCreate
+	if err := checkFixed(b, MagicMknodCreate, MknodCreatePayloadLen, "MKNOD_CREATE"); err != nil {
+		return t, err
+	}
+	t.InodeID = getU64(b[4:12])
+	t.Generation = getU64(b[12:20])
+	t.Kind = getU8(b[20:21])
+	if t.Kind < KindFifo || t.Kind > KindSocket {
+		return t, orfserr.Corrupt("MKNOD_CREATE kind %d out of range", t.Kind)
+	}
+	t.Mode = getU32(b[24:28])
+	t.UID = getU32(b[28:32])
+	t.GID = getU32(b[32:36])
+	t.Nlink = getU32(b[36:40])
+	t.Rdev = getU64(b[40:48])
+	t.Atime = getTimespec(b[48:60])
+	t.Mtime = getTimespec(b[60:72])
+	t.Ctime = getTimespec(b[72:84])
+	return t, nil
+}
+
+// CtimeUpdate is the fixed 28-byte CTIME_UPDATE payload. A metadata-only change
+// (chmod, chown, link, unlink, an overwrite) updates ctime without touching
+// mtime; INODE_SETATTR derives ctime from mtime for content changes, so those
+// carry no separate ctime.
+type CtimeUpdate struct {
+	InodeID uint64
+	Ctime   Timespec
+}
+
+// Encode renders the CTIME_UPDATE payload.
+func (t CtimeUpdate) Encode() []byte {
+	b := make([]byte, CtimeUpdatePayloadLen)
+	putU32(b[0:4], MagicCtimeUpdate)
+	putU64(b[4:12], t.InodeID)
+	putTimespec(b[12:24], t.Ctime)
+	putU32(b[24:28], CRC32C(b[0:24]))
+	return b
+}
+
+// DecodeCtimeUpdate parses a CTIME_UPDATE payload.
+func DecodeCtimeUpdate(b []byte) (CtimeUpdate, error) {
+	var t CtimeUpdate
+	if err := checkFixed(b, MagicCtimeUpdate, CtimeUpdatePayloadLen, "CTIME_UPDATE"); err != nil {
+		return t, err
+	}
+	t.InodeID = getU64(b[4:12])
+	t.Ctime = getTimespec(b[12:24])
+	return t, nil
+}
+
 // SymlinkCreate is the variable SYMLINK_CREATE payload.
 type SymlinkCreate struct {
 	InodeID    uint64

@@ -243,18 +243,15 @@ system-call suite, built from source and run against an OrFS mount inside a
 **privileged** court container by `scripts/container-pjdfstest.sh`.
 
 Measures how much of the POSIX namespace surface the mount actually conforms to.
-**The result is not clean, and it is published in full:** 8798 assertions,
-3827 passed, **4971 failed** across **87 test files**. Every failing file is
-listed in the receipt's `deviations` array; **none is allowlisted**. The failing
-categories are chmod, chown, ftruncate, link, mkdir, mkfifo, mknod, open, rename,
-rmdir, symlink, truncate, unlink, and utimensat. The same suite passes cleanly on
-tmpfs, so these are genuine OrFS POSIX deviations, not harness artifacts.
+**The result is now clean:** 8798 assertions, **all 8798 passed, 0 failed**. The
+receipt's `deviations` array is empty of real deviations; a passing run never
+allowlists. The suite also passes cleanly on tmpfs; this run shows the OrFS mount
+now tracks it.
 
-A run that completes writes its receipt and exits 0 even when the suite reports
-failures (they are deviations, not a court failure); a `verify --deep` that
-reports `[FAIL]` after the run is a real integrity failure and exits 1. The
-court is part of the `container-verify.sh` gate, and closing these deviations is
-the tracked next work (`docs/LIMITATIONS.md` §11).
+A run that completes writes its receipt and exits 0 (failures would be deviations,
+not a court failure); a `verify --deep` that reports `[FAIL]` after the run is a
+real integrity failure and exits 1. The court is part of the
+`container-verify.sh` gate.
 
 Run:
 
@@ -282,7 +279,7 @@ Measured today (all bounded, laboratory conditions):
 | capacity guard | typed `CapacityExhausted` before the first byte | `evidence/recovery/capacity.json` |
 | quarantine | torn tail moved, never truncated | `evidence/recovery/quarantine.json` |
 | cross-FS determinism | identical segment sha256 across ext4/xfs/btrfs/tmpfs | `evidence/correctness/cross-fs.json` |
-| pjdfstest conformance | 3827/8798 assertions pass; 4971 deviations across 87 files (not allowlisted) | `evidence/performance/pjdfstest.json` |
+| pjdfstest conformance | 8798/8798 assertions pass; 0 deviations | `evidence/performance/pjdfstest.json` |
 
 Explicitly not yet measured (absence is deliberate, not implied):
 

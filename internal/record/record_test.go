@@ -136,6 +136,8 @@ func TestFixedPayloadSizes(t *testing.T) {
 		{"TX_BEGIN", len(TxBegin{}.Encode()), TxBeginPayloadLen},
 		{"TX_COMMIT", len(TxCommit{}.Encode()), TxCommitPayloadLen},
 		{"INODE_CREATE", len(InodeCreate{}.Encode()), InodeCreatePayloadLen},
+		{"MKNOD_CREATE", len(MknodCreate{}.Encode()), MknodCreatePayloadLen},
+		{"CTIME_UPDATE", len(CtimeUpdate{}.Encode()), CtimeUpdatePayloadLen},
 		{"INODE_METADATA", len(InodeMetadata{}.Encode()), InodeMetadataPayloadLen},
 		{"PERMISSION_CHANGE", len(PermissionChange{}.Encode()), PermissionChangePayloadLen},
 		{"INODE_SETATTR", len(InodeSetattr{}.Encode()), InodeSetattrPayloadLen},
@@ -159,6 +161,12 @@ func TestPayloadMagicsOnDisk(t *testing.T) {
 	}
 	if !bytes.Equal(InodeCreate{}.Encode()[0:4], []byte("ICR1")) {
 		t.Error("INODE_CREATE magic")
+	}
+	if !bytes.Equal(MknodCreate{}.Encode()[0:4], []byte("MNP1")) {
+		t.Error("MKNOD_CREATE magic")
+	}
+	if !bytes.Equal(CtimeUpdate{}.Encode()[0:4], []byte("CTU1")) {
+		t.Error("CTIME_UPDATE magic")
 	}
 	if !bytes.Equal((DentryRename{}).Encode()[0:4], []byte("DRN1")) {
 		t.Error("DENTRY_RENAME magic")
@@ -240,6 +248,25 @@ func TestVariablePayloadRoundTrips(t *testing.T) {
 	binary.LittleEndian.PutUint32(empty[len(empty)-4:], CRC32C(empty[:len(empty)-4]))
 	if _, err := DecodeSymlinkCreate(empty); err == nil {
 		t.Fatal("empty symlink target should be refused")
+	}
+
+	mk := MknodCreate{InodeID: 11, Generation: 1, Kind: KindChar, Mode: 0o600, UID: 7, GID: 8, Nlink: 1, Rdev: 0x0102}
+	mgot, err := DecodeMknodCreate(mk.Encode())
+	if err != nil || mgot.InodeID != 11 || mgot.Kind != KindChar || mgot.Mode != 0o600 || mgot.Rdev != 0x0102 {
+		t.Fatalf("mknod round trip: %+v err=%v", mgot, err)
+	}
+	// A kind outside the special-file range is refused on decode.
+	badKind := append([]byte(nil), mk.Encode()...)
+	badKind[20] = KindDir
+	binary.LittleEndian.PutUint32(badKind[84:88], CRC32C(badKind[:84]))
+	if _, err := DecodeMknodCreate(badKind); err == nil {
+		t.Fatal("MKNOD_CREATE with a directory kind should be refused")
+	}
+
+	cu := CtimeUpdate{InodeID: 13, Ctime: Timespec{Secs: 1700000000, Nanos: 7}}
+	cgot, err := DecodeCtimeUpdate(cu.Encode())
+	if err != nil || cgot.InodeID != 13 || cgot.Ctime != (Timespec{Secs: 1700000000, Nanos: 7}) {
+		t.Fatalf("ctime round trip: %+v err=%v", cgot, err)
 	}
 }
 

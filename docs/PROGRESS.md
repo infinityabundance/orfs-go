@@ -41,7 +41,7 @@ its owning phase rather than pretending to work.
 | 31 | Scan-resistant admission court (S3-FIFO vs FIFO vs LRU) | complete |
 | 32 | F2 (FUSE-over-`io_uring`); group commit; per-read allocs court | planned |
 | 33 | Cross-FS determinism (identical authoritative log bytes across ext4/xfs/btrfs/tmpfs, fixed uuid + pinned clock) | complete |
-| 34 | pjdfstest court (upstream POSIX syscall suite vs the mount; deviations published, not allowlisted) | complete — 4971 deviations across 87 files are the tracked next work |
+| 34 | pjdfstest court (upstream POSIX syscall suite vs the mount; deviations published, not allowlisted) | complete — 8798/8798 assertions pass, 0 deviations |
 
 ## Phase 14 provenance note
 

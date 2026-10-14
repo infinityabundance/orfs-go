@@ -80,6 +80,50 @@ func (ns *Namespace) Mkdir(cred Credential, parent uint64, name string, mode, ui
 	return in, nil
 }
 
+// Mknod creates a special file: a FIFO, Unix-domain socket, or character/block
+// device node. kind is a record inode kind and mode carries only the permission
+// bits (the type is the kind). A non-root caller may not create a device node
+// (EPERM); a FIFO or socket only needs write permission on the parent.
+func (ns *Namespace) Mknod(cred Credential, parent uint64, name string, kind uint8, mode uint32, rdev uint64, uid, gid uint32) (*index.Inode, error) {
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+	if kind < record.KindFifo || kind > record.KindSocket {
+		return nil, orfserr.Invalid("unsupported special-file kind %d", kind)
+	}
+	if err := checkNameLen(name); err != nil {
+		return nil, err
+	}
+	if _, err := ns.dir(cred, parent, true); err != nil {
+		return nil, err
+	}
+	if err := record.ValidateName([]byte(name)); err != nil {
+		return nil, err
+	}
+	if _, ok := ns.idx().Lookup(parent, name); ok {
+		return nil, orfserr.Exists("entry %q already exists in %d", name, parent)
+	}
+	if (kind == record.KindChar || kind == record.KindBlock) && cred.UID != 0 {
+		return nil, orfserr.Permission("creating a device node requires root")
+	}
+	id := ns.idx().NextInodeID
+	tm := ns.now()
+	mc := record.MknodCreate{
+		InodeID: id, Generation: 1, Kind: kind,
+		Mode: mode & 0o7777, UID: uid, GID: gid, Nlink: 1, Rdev: rdev,
+		Atime: tm, Mtime: tm, Ctime: tm,
+	}
+	recs := []*record.Record{
+		mkRec(record.TypeMknodCreate, 0, mc.Encode()),
+		mkRec(record.TypeDentryAdd, 0, record.EncodeDentryAdd(record.DentryAdd{Parent: parent, Child: id, Name: []byte(name)})),
+		mkRec(record.TypeInodeSetattr, 0, record.InodeSetattr{InodeID: parent, Mtime: &tm}.Encode()),
+	}
+	if _, err := ns.vol.Publish(recs); err != nil {
+		return nil, err
+	}
+	in, _ := ns.idx().Inode(id)
+	return in, nil
+}
+
 // Symlink creates a symbolic link.
 func (ns *Namespace) Symlink(cred Credential, parent uint64, name string, target string, uid, gid uint32) (*index.Inode, error) {
 	ns.mu.Lock()
@@ -205,6 +249,8 @@ func (ns *Namespace) Unlink(cred Credential, parent uint64, name string) error {
 	}
 	recs = append(recs, mkRec(record.TypeInodeMetadata, 0, record.InodeMetadata{InodeID: child.ID, Nlink: remaining}.Encode()))
 	tm := ns.now()
+	// Removing a name is a metadata change: the surviving inode's ctime advances.
+	recs = append(recs, mkRec(record.TypeCtimeUpdate, 0, record.CtimeUpdate{InodeID: child.ID, Ctime: tm}.Encode()))
 	recs = append(recs, mkRec(record.TypeInodeSetattr, 0, record.InodeSetattr{InodeID: parent, Mtime: &tm}.Encode()))
 	_, err = ns.vol.Publish(recs)
 	return err
@@ -259,10 +305,12 @@ func (ns *Namespace) Rename(cred Credential, oldParent uint64, oldName string, n
 	if err := checkNameLen(newName); err != nil {
 		return err
 	}
-	if _, err := ns.dir(cred, oldParent, true); err != nil {
+	op, err := ns.dir(cred, oldParent, true)
+	if err != nil {
 		return err
 	}
-	if _, err := ns.dir(cred, newParent, true); err != nil {
+	np, err := ns.dir(cred, newParent, true)
+	if err != nil {
 		return err
 	}
 	child, ok := ns.idx().Lookup(oldParent, oldName)
@@ -275,6 +323,23 @@ func (ns *Namespace) Rename(cred Credential, oldParent uint64, oldName string, n
 	}
 	if child.Kind == record.KindDir && ns.isSelfOrDescendant(newParent, child.ID) {
 		return orfserr.Invalid("rename would create a directory cycle")
+	}
+	// Sticky-bit rule: in a sticky directory only the entry's owner, the
+	// directory's owner, or root may rename an entry out of it, or rename another
+	// entry over one (POSIX). Linux reports EPERM/EACCES for both.
+	if err := ns.checkSticky(cred, op, child); err != nil {
+		return err
+	}
+	if dest, ok := ns.idx().Lookup(newParent, newName); ok && dest.ID != child.ID {
+		if err := ns.checkSticky(cred, np, dest); err != nil {
+			return err
+		}
+	}
+	// Moving a directory to a different parent rewrites its ".." entry, which
+	// needs write permission on the directory itself (Linux). A same-parent
+	// rename does not touch it.
+	if child.Kind == record.KindDir && newParent != oldParent && !HasPermission(cred, child, 0o2) {
+		return orfserr.Permission("rename of a directory across parents requires write permission on it")
 	}
 
 	if exchange {
@@ -291,6 +356,7 @@ func (ns *Namespace) Rename(cred Credential, oldParent uint64, oldName string, n
 	}
 
 	var recs []*record.Record
+	destIsDir := false
 	if dest, ok := ns.idx().Lookup(newParent, newName); ok {
 		if dest.ID == child.ID {
 			return nil // same file, no-op
@@ -304,19 +370,54 @@ func (ns *Namespace) Rename(cred Credential, oldParent uint64, oldName string, n
 		if child.Kind != record.KindDir && dest.Kind == record.KindDir {
 			return orfserr.IsDir("cannot overwrite a directory with a file")
 		}
-		// Overwrite is a preceding removal in the same transaction.
+		destIsDir = dest.Kind == record.KindDir
+		// Overwrite is a preceding removal in the same transaction. The
+		// destination loses exactly one name: a directory becomes unlinked
+		// (nlink 0), a multiply-linked file keeps its remaining links.
+		destNlink := uint32(0)
+		if !destIsDir && dest.Nlink > 0 {
+			destNlink = dest.Nlink - 1
+		}
 		recs = append(recs, mkRec(record.TypeDentryRemove, 0, record.EncodeDentryRemove(record.DentryRemove{Parent: newParent, Name: []byte(newName)})))
-		recs = append(recs, mkRec(record.TypeInodeMetadata, 0, record.InodeMetadata{InodeID: dest.ID, Nlink: 0}.Encode()))
+		recs = append(recs, mkRec(record.TypeInodeMetadata, 0, record.InodeMetadata{InodeID: dest.ID, Nlink: destNlink}.Encode()))
+		// Removing the overwritten name updates the destination inode's ctime.
+		recs = append(recs, mkRec(record.TypeCtimeUpdate, 0, record.CtimeUpdate{InodeID: dest.ID, Ctime: ns.now()}.Encode()))
 	}
 	dr := record.DentryRename{Flags: record.RenameMove, OldParent: oldParent, NewParent: newParent, OldName: []byte(oldName), NewName: []byte(newName)}
 	recs = append(recs, mkRec(record.TypeDentryRename, 0, dr.Encode()))
 	tm := ns.now()
+	// A directory's link count tracks the subdirectories that point at it with
+	// "..": moving one out of oldParent and into newParent adjusts both. The
+	// new parent also loses a subdirectory when an existing one is overwritten.
+	if child.Kind == record.KindDir {
+		oldNlink := op.Nlink
+		if oldNlink > 0 {
+			oldNlink--
+		}
+		if newParent != oldParent {
+			recs = append(recs, mkRec(record.TypeInodeMetadata, 0, record.InodeMetadata{InodeID: oldParent, Nlink: oldNlink}.Encode()))
+		}
+		newNlink := np.Nlink
+		if newParent != oldParent {
+			newNlink++
+		}
+		if destIsDir && newNlink > 0 {
+			newNlink--
+		}
+		if newNlink != np.Nlink {
+			recs = append(recs, mkRec(record.TypeInodeMetadata, 0, record.InodeMetadata{InodeID: newParent, Nlink: newNlink}.Encode()))
+		}
+	} else if destIsDir {
+		if np.Nlink > 0 {
+			recs = append(recs, mkRec(record.TypeInodeMetadata, 0, record.InodeMetadata{InodeID: newParent, Nlink: np.Nlink - 1}.Encode()))
+		}
+	}
 	// A rename marks both containing directories' mtime and ctime for update.
 	recs = append(recs, mkRec(record.TypeInodeSetattr, 0, record.InodeSetattr{InodeID: oldParent, Mtime: &tm}.Encode()))
 	if newParent != oldParent {
 		recs = append(recs, mkRec(record.TypeInodeSetattr, 0, record.InodeSetattr{InodeID: newParent, Mtime: &tm}.Encode()))
 	}
-	_, err := ns.vol.Publish(recs)
+	_, err = ns.vol.Publish(recs)
 	return err
 }
 
@@ -340,9 +441,14 @@ func (ns *Namespace) Link(cred Credential, parent uint64, name string, target ui
 	if _, ok := ns.idx().Lookup(parent, name); ok {
 		return orfserr.Exists("entry %q already exists in %d", name, parent)
 	}
+	tm := ns.now()
 	recs := []*record.Record{
 		mkRec(record.TypeHardlinkAdd, 0, record.EncodeHardlinkAdd(record.DentryAdd{Parent: parent, Child: target, Name: []byte(name)})),
 		mkRec(record.TypeInodeMetadata, 0, record.InodeMetadata{InodeID: target, Nlink: targetIn.Nlink + 1}.Encode()),
+		// Adding a link is a metadata change: the target's ctime advances, and the
+		// containing directory gains an entry (its mtime/ctime advance).
+		mkRec(record.TypeCtimeUpdate, 0, record.CtimeUpdate{InodeID: target, Ctime: tm}.Encode()),
+		mkRec(record.TypeInodeSetattr, 0, record.InodeSetattr{InodeID: parent, Mtime: &tm}.Encode()),
 	}
 	_, err = ns.vol.Publish(recs)
 	return err
@@ -428,6 +534,12 @@ func (ns *Namespace) Setattr(cred Credential, id uint64, req SetattrRequest) err
 	mode := req.Mode
 	if mode != nil {
 		m := *mode & 0o7777
+		// POSIX: an unprivileged chmod clears S_ISGID when the inode's group is
+		// neither the caller's effective group nor a supplementary group (Linux
+		// applies this to every inode type).
+		if !isRoot && m&0o2000 != 0 && !inGroup(cred, in.GID) {
+			m &^= 0o2000
+		}
 		mode = &m
 	}
 	if req.Size != nil && !isRoot && in.Mode&0o6000 != 0 {
@@ -456,9 +568,8 @@ func (ns *Namespace) Setattr(cred Credential, id uint64, req SetattrRequest) err
 	}
 	if hasPerm {
 		recs = append(recs, mkRec(record.TypePermissionChange, 0, pc.Encode()))
-	}
-	if hasPerm {
-		recs = append(recs, mkRec(record.TypePermissionChange, 0, pc.Encode()))
+		// A mode/owner change is a metadata change: ctime advances, mtime does not.
+		recs = append(recs, mkRec(record.TypeCtimeUpdate, 0, record.CtimeUpdate{InodeID: id, Ctime: ns.now()}.Encode()))
 	}
 	if timeChange {
 		sa := record.InodeSetattr{InodeID: id, Atime: req.Atime}

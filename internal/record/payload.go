@@ -15,6 +15,8 @@ const (
 	MagicTxCommit         uint32 = 0x314D4354 // "TCM1"
 	MagicTxAbort          uint32 = 0x31414254 // "TBA1"
 	MagicInodeCreate      uint32 = 0x31524349 // "ICR1"
+	MagicMknodCreate      uint32 = 0x31504E4D // "MNP1"
+	MagicCtimeUpdate      uint32 = 0x31555443 // "CTU1"
 	MagicSymlinkCreate    uint32 = 0x314B4C53 // "SLK1"
 	MagicInodeMetadata    uint32 = 0x31544D49 // "IMT1"
 	MagicPermissionChange uint32 = 0x31484350 // "PCH1"
@@ -39,6 +41,10 @@ const (
 	TxCommitPayloadLen    = 72
 	TxAbortPrefixLen      = 20
 	InodeCreatePayloadLen = 88
+	// MknodCreatePayloadLen matches INODE_CREATE; the device number occupies the
+	// Size slot, since a special file carries no content size.
+	MknodCreatePayloadLen = 88
+	CtimeUpdatePayloadLen = 28
 	// SymlinkCreatePrefixLen is the offset of the symlink target within the
 	// payload (the fixed fields including the u32 target_len end at 48).
 	SymlinkCreatePrefixLen     = 48
@@ -83,6 +89,10 @@ const (
 	KindFile    uint8 = 0
 	KindDir     uint8 = 1
 	KindSymlink uint8 = 2
+	KindFifo    uint8 = 3
+	KindChar    uint8 = 4
+	KindBlock   uint8 = 5
+	KindSocket  uint8 = 6
 )
 
 // Rename flags.
@@ -100,6 +110,14 @@ func InodeKindName(k uint8) string {
 		return "directory"
 	case KindSymlink:
 		return "symlink"
+	case KindFifo:
+		return "fifo"
+	case KindChar:
+		return "char device"
+	case KindBlock:
+		return "block device"
+	case KindSocket:
+		return "socket"
 	}
 	return "unknown"
 }

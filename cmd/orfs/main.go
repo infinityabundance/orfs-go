@@ -367,7 +367,6 @@ func cmdMount(args []string) int {
 	fs := newFlagSet("mount")
 	readOnly := fs.Bool("read-only", false, "mount read-only")
 	allowOther := fs.Bool("allow-other", false, "allow other users")
-	defaultPerms := fs.Bool("default-permissions", false, "delegate permission checks to the kernel")
 	directIO := fs.Bool("direct-io", false, "bypass the page cache (FOPEN_DIRECT_IO)")
 	attrTTL := fs.Float64("attr-ttl-ms", 1000, "attribute cache TTL in ms")
 	entryTTL := fs.Float64("entry-ttl-ms", 1000, "entry cache TTL in ms")
@@ -390,13 +389,12 @@ func cmdMount(args []string) int {
 	attrTTLSec := *attrTTL / 1000.0
 	entryTTLSec := *entryTTL / 1000.0
 	srv := fusefs.New(v, fusefs.MountOptions{
-		AllowOther:         *allowOther,
-		ReadOnly:           *readOnly,
-		DefaultPermissions: *defaultPerms,
-		DirectIO:           *directIO,
-		AttrTTLSeconds:     &attrTTLSec,
-		EntryTTLSeconds:    &entryTTLSec,
-		FsName:             *fsName,
+		AllowOther:      *allowOther,
+		ReadOnly:        *readOnly,
+		DirectIO:        *directIO,
+		AttrTTLSeconds:  &attrTTLSec,
+		EntryTTLSeconds: &entryTTLSec,
+		FsName:          *fsName,
 	})
 	server, err := srv.Mount(pos[1])
 	if err != nil {

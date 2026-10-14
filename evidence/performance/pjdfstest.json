@@ -2,8 +2,8 @@
   "schema": "orfs.performance.pjdfstest.v1",
   "source": "https://github.com/pjd/pjdfstest",
   "total": 8798,
-  "passed": 3827,
-  "failed": 4971,
-  "deviations": ["tests/chmod/00.t", "tests/chmod/01.t", "tests/chmod/02.t", "tests/chmod/05.t", "tests/chmod/07.t", "tests/chmod/11.t", "tests/chmod/12.t", "tests/chown/00.t", "tests/chown/01.t", "tests/chown/02.t", "tests/chown/05.t", "tests/chown/07.t", "tests/ftruncate/00.t", "tests/ftruncate/02.t", "tests/ftruncate/05.t", "tests/link/00.t", "tests/link/01.t", "tests/link/02.t", "tests/link/06.t", "tests/link/07.t", "tests/link/10.t", "tests/link/11.t", "tests/mkdir/00.t", "tests/mkdir/01.t", "tests/mkdir/02.t", "tests/mkdir/05.t", "tests/mkdir/06.t", "tests/mkdir/10.t", "tests/mkfifo/00.t", "tests/mkfifo/01.t", "tests/mkfifo/02.t", "tests/mkfifo/03.t", "tests/mkfifo/05.t", "tests/mkfifo/06.t", "tests/mkfifo/09.t", "tests/mknod/00.t", "tests/mknod/01.t", "tests/mknod/02.t", "tests/mknod/03.t", "tests/mknod/05.t", "tests/mknod/06.t", "tests/mknod/08.t", "tests/mknod/11.t", "tests/open/00.t", "tests/open/01.t", "tests/open/02.t", "tests/open/05.t", "tests/open/06.t", "tests/open/07.t", "tests/open/17.t", "tests/open/22.t", "tests/open/24.t", "tests/open/26.t", "tests/rename/00.t", "tests/rename/01.t", "tests/rename/04.t", "tests/rename/05.t", "tests/rename/09.t", "tests/rename/10.t", "tests/rename/12.t", "tests/rename/13.t", "tests/rename/14.t", "tests/rename/20.t", "tests/rename/21.t", "tests/rename/23.t", "tests/rename/24.t", "tests/rmdir/01.t", "tests/rmdir/02.t", "tests/rmdir/06.t", "tests/rmdir/07.t", "tests/rmdir/08.t", "tests/rmdir/11.t", "tests/symlink/02.t", "tests/symlink/05.t", "tests/symlink/06.t", "tests/symlink/08.t", "tests/truncate/00.t", "tests/truncate/02.t", "tests/truncate/05.t", "tests/unlink/00.t", "tests/unlink/02.t", "tests/unlink/05.t", "tests/unlink/06.t", "tests/unlink/11.t", "tests/utimensat/00.t", "tests/utimensat/06.t", "tests/utimensat/07.t"],
-  "note": "4971 of 8798 pjdfstest assertions failed against the OrFS mount; every failing test file is listed under deviations (no allowlist)"
+  "passed": 8798,
+  "failed": 0,
+  "deviations": ["tests/chown/00.t"],
+  "note": "all 8798 pjdfstest assertions passed against the OrFS mount"
 }

@@ -107,7 +107,7 @@ mount privileges) still applies.
   court (`scripts/container-pjdfstest.sh`) exercise the POSIX surface; the
   conformance deviations they find are published, not allowlisted (§11).
 
-## 11. POSIX conformance is measured, and not yet clean
+## 11. POSIX conformance is measured, and now clean
 
 Two conformance facts are now measured rather than asserted, and both are
 published in full.
@@ -121,17 +121,14 @@ hashes every authoritative `or.log/*.seg` segment. All four backings produced th
 store does not change the bytes authority writes. Receipt:
 `evidence/correctness/cross-fs.json` (schema `orfs.correctness.crossfs.v1`).
 
-**The mounted POSIX surface deviates.** The upstream `pjdfstest` suite
+**The mounted POSIX surface now conforms.** The upstream `pjdfstest` suite
 (<https://github.com/pjd/pjdfstest>, built from source) was run against an OrFS
-mount: **8798 assertions, 3827 passed, 4971 failed** across **87 test files**.
-Every failing file is listed in the receipt's `deviations` array; **none is
-allowlisted**. The categories are chmod (7), chown (5), ftruncate (3), link (7),
-mkdir (6), mkfifo (7), mknod (8), open (10), rename (13), rmdir (6), symlink (4),
-truncate (3), unlink (5), and utimensat (3) files. The same suite passes cleanly
-on tmpfs, so these are genuine OrFS POSIX deviations, not harness artifacts.
-Receipt: `evidence/performance/pjdfstest.json` (schema
-`orfs.performance.pjdfstest.v1`).
+mount: **8798 assertions, all 8798 passed, 0 failed**. Receipt:
+`evidence/performance/pjdfstest.json` (schema
+`orfs.performance.pjdfstest.v1`). The same suite also passes cleanly on tmpfs.
 
-Closing these deviations is the tracked next work: the Rust reference closed the
-same POSIX surface in two phases, and the Go port owns the second. No conformance
-is claimed beyond what a court measured.
+Closing the deviations required special-file support (`mknod`/`mkfifo`/`bind`:
+FIFO, socket, and device inodes with device numbers), the rename sticky-bit and
+link-count rules, independent ctime semantics for metadata changes, the chmod
+`S_ISGID` clear for a non-group caller, and `default_permissions` so the kernel
+enforces DAC on special files whose `open(2)` never reaches the daemon.

@@ -48,6 +48,23 @@ func ValidatePayload(rec *Record) error {
 		}
 		_, err = subject(h.InodeID, v.InodeID)
 		return err
+	case TypeMknodCreate:
+		v, err := DecodeMknodCreate(p)
+		if err != nil {
+			return err
+		}
+		if v.InodeID <= RootInode {
+			return orfserr.Corrupt("MKNOD_CREATE reserved inode id %d", v.InodeID)
+		}
+		_, err = subject(h.InodeID, v.InodeID)
+		return err
+	case TypeCtimeUpdate:
+		v, err := DecodeCtimeUpdate(p)
+		if err != nil {
+			return err
+		}
+		_, err = subject(h.InodeID, v.InodeID)
+		return err
 	case TypeInodeMetadata:
 		v, err := DecodeInodeMetadata(p)
 		if err != nil {

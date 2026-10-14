@@ -25,6 +25,8 @@ const (
 	TypeSnapshotRoot     uint16 = 0x0013
 	TypeIndexCheckpoint  uint16 = 0x0014
 	TypePermissionChange uint16 = 0x0015
+	TypeMknodCreate      uint16 = 0x0016
+	TypeCtimeUpdate      uint16 = 0x0017
 )
 
 var typeName = map[uint16]string{
@@ -49,6 +51,8 @@ var typeName = map[uint16]string{
 	TypeSnapshotRoot:     "SNAPSHOT_ROOT",
 	TypeIndexCheckpoint:  "INDEX_CHECKPOINT",
 	TypePermissionChange: "PERMISSION_CHANGE",
+	TypeMknodCreate:      "MKNOD_CREATE",
+	TypeCtimeUpdate:      "CTIME_UPDATE",
 }
 
 // TypeName returns the registry name of a code, mirroring record_type_name:

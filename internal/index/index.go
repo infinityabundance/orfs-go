@@ -31,6 +31,7 @@ type Inode struct {
 	Xattrs  map[string][]byte
 	Extents *ExtentMap
 	Target  []byte // symlink target
+	Rdev    uint64 // device number for a char/block special file
 
 	Generation         uint64
 	Version            uint64
@@ -213,6 +214,32 @@ func (idx *Index) Apply(rec *record.Record, offset uint64) error {
 			Mtime: v.Mtime, Ctime: v.Mtime, Target: append([]byte(nil), v.Target...),
 		}
 		idx.create(in, offset)
+		return nil
+
+	case record.TypeMknodCreate:
+		v, err := record.DecodeMknodCreate(rec.Payload)
+		if err != nil {
+			return err
+		}
+		in := &Inode{
+			ID: v.InodeID, Generation: v.Generation, Kind: v.Kind, Mode: v.Mode & 0o7777,
+			UID: v.UID, GID: v.GID, Nlink: v.Nlink, Rdev: v.Rdev,
+			Atime: v.Atime, Mtime: v.Mtime, Ctime: v.Ctime,
+		}
+		idx.create(in, offset)
+		return nil
+
+	case record.TypeCtimeUpdate:
+		v, err := record.DecodeCtimeUpdate(rec.Payload)
+		if err != nil {
+			return err
+		}
+		in, ok := idx.Inodes[v.InodeID]
+		if !ok {
+			return orfserr.Corrupt("CTIME_UPDATE for unknown inode %d", v.InodeID)
+		}
+		in.Ctime = v.Ctime
+		idx.bump(in, offset)
 		return nil
 
 	case record.TypeInodeMetadata:
