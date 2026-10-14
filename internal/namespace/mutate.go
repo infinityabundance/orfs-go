@@ -90,6 +90,9 @@ func (ns *Namespace) Mknod(cred Credential, parent uint64, name string, kind uin
 	if kind < record.KindFifo || kind > record.KindSocket {
 		return nil, orfserr.Invalid("unsupported special-file kind %d", kind)
 	}
+	if ns.compat {
+		return nil, orfserr.NotSupported("special files are not supported in the Rust-reference compatibility profile")
+	}
 	if err := checkNameLen(name); err != nil {
 		return nil, err
 	}
@@ -250,7 +253,7 @@ func (ns *Namespace) Unlink(cred Credential, parent uint64, name string) error {
 	recs = append(recs, mkRec(record.TypeInodeMetadata, 0, record.InodeMetadata{InodeID: child.ID, Nlink: remaining}.Encode()))
 	tm := ns.now()
 	// Removing a name is a metadata change: the surviving inode's ctime advances.
-	recs = append(recs, mkRec(record.TypeCtimeUpdate, 0, record.CtimeUpdate{InodeID: child.ID, Ctime: tm}.Encode()))
+	recs = append(recs, ns.ctimeRec(child.ID, tm)...)
 	recs = append(recs, mkRec(record.TypeInodeSetattr, 0, record.InodeSetattr{InodeID: parent, Mtime: &tm}.Encode()))
 	_, err = ns.vol.Publish(recs)
 	return err
@@ -381,7 +384,7 @@ func (ns *Namespace) Rename(cred Credential, oldParent uint64, oldName string, n
 		recs = append(recs, mkRec(record.TypeDentryRemove, 0, record.EncodeDentryRemove(record.DentryRemove{Parent: newParent, Name: []byte(newName)})))
 		recs = append(recs, mkRec(record.TypeInodeMetadata, 0, record.InodeMetadata{InodeID: dest.ID, Nlink: destNlink}.Encode()))
 		// Removing the overwritten name updates the destination inode's ctime.
-		recs = append(recs, mkRec(record.TypeCtimeUpdate, 0, record.CtimeUpdate{InodeID: dest.ID, Ctime: ns.now()}.Encode()))
+		recs = append(recs, ns.ctimeRec(dest.ID, ns.now())...)
 	}
 	dr := record.DentryRename{Flags: record.RenameMove, OldParent: oldParent, NewParent: newParent, OldName: []byte(oldName), NewName: []byte(newName)}
 	recs = append(recs, mkRec(record.TypeDentryRename, 0, dr.Encode()))
@@ -445,11 +448,11 @@ func (ns *Namespace) Link(cred Credential, parent uint64, name string, target ui
 	recs := []*record.Record{
 		mkRec(record.TypeHardlinkAdd, 0, record.EncodeHardlinkAdd(record.DentryAdd{Parent: parent, Child: target, Name: []byte(name)})),
 		mkRec(record.TypeInodeMetadata, 0, record.InodeMetadata{InodeID: target, Nlink: targetIn.Nlink + 1}.Encode()),
-		// Adding a link is a metadata change: the target's ctime advances, and the
-		// containing directory gains an entry (its mtime/ctime advance).
-		mkRec(record.TypeCtimeUpdate, 0, record.CtimeUpdate{InodeID: target, Ctime: tm}.Encode()),
-		mkRec(record.TypeInodeSetattr, 0, record.InodeSetattr{InodeID: parent, Mtime: &tm}.Encode()),
 	}
+	// Adding a link is a metadata change: the target's ctime advances, and the
+	// containing directory gains an entry (its mtime/ctime advance).
+	recs = append(recs, ns.ctimeRec(target, tm)...)
+	recs = append(recs, mkRec(record.TypeInodeSetattr, 0, record.InodeSetattr{InodeID: parent, Mtime: &tm}.Encode()))
 	_, err = ns.vol.Publish(recs)
 	return err
 }
@@ -569,7 +572,7 @@ func (ns *Namespace) Setattr(cred Credential, id uint64, req SetattrRequest) err
 	if hasPerm {
 		recs = append(recs, mkRec(record.TypePermissionChange, 0, pc.Encode()))
 		// A mode/owner change is a metadata change: ctime advances, mtime does not.
-		recs = append(recs, mkRec(record.TypeCtimeUpdate, 0, record.CtimeUpdate{InodeID: id, Ctime: ns.now()}.Encode()))
+		recs = append(recs, ns.ctimeRec(id, ns.now())...)
 	}
 	if timeChange {
 		sa := record.InodeSetattr{InodeID: id, Atime: req.Atime}

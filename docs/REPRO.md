@@ -109,19 +109,25 @@ builds the Rust reference (`orfs` v0.2.0) in a capped `rust:1.99.0-slim-bookworm
 container via `scripts/container-rust-build.sh`, staging the binary at
 `.cache/orfs-rs/orfs`; that build needs the crates.io registry, so the container
 gets `--network host` and the same caps as every other court. It then builds the
-court image (which carries the Go `orfs` and the read-only `orfsxlang` probe) and
-runs `scripts/crosslang-court.sh` as root with `/dev/fuse` and `CAP_SYS_ADMIN`,
-bind-mounting the Rust binary and `.reference/OrFS/tests/fixtures` read-only.
+court image (which carries the Go `orfs`, the read-only `orfsxlang` probe, and
+`orfsoptprobe`, which builds a probe volume carrying a caller-chosen record type)
+and runs `scripts/crosslang-court.sh` as root with `/dev/fuse` and
+`CAP_SYS_ADMIN`, bind-mounting the Rust binary and
+`.reference/OrFS/tests/fixtures` read-only.
 
 The court has three honest outcomes. It reports **SKIPPED** (never a pass) if
 there is no docker daemon, no `/dev/fuse`, no Rust reference tree, or the Rust
 build fails. It reports **PASS** when every matrix case is met. It reports
 **FAIL**, with the exact record and field, when the two implementations disagree.
-In this tree it currently reports **FAIL** on one case — the Go writer emits
-`CTIME_UPDATE` (`0x0017`), a mandatory record type the Rust registry does not
-define — and records that, a shared (Go *and* Rust) writable-open recovery
-defect on an in-place torn tail, and the builder-parameter byte differences under
-`findings` in the receipt.
+In this tree it reports **PASS** — 12/12 cases. The Go writer runs in its
+opt-in **compatibility profile** (`ORFS_COMPAT=1`), so the Go volumes the
+reference reads stay inside the reference's registry; the native profile
+(`CTIME_UPDATE` `0x0017`, `MKNOD_CREATE` `0x0016`) is asserted as an explicit gate
+(`go_native_profile_gated`), and the Step-1 finding that the reference refuses
+in-bracket *optional* records too is pinned by `reference_optional_record_policy`.
+A shared (Go *and* Rust) writable-open recovery defect on an in-place torn tail,
+and the builder-parameter byte differences, are recorded under `findings` in the
+receipt.
 
 `sh scripts/container-verify.sh --fast` runs the cheap subset. Every stage a host
 cannot run is reported `SKIPPED`, and a `SKIPPED` stage is never counted as a

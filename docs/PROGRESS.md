@@ -45,7 +45,7 @@ its owning phase rather than pretending to work.
 | 35 | Group commit: an opt-in `Log` coordinator coalescing concurrent publishes behind one durability barrier (own root + contiguous sequence numbers per transaction; all-or-nothing on a failed fsync), with correctness courts and an OFF-vs-ON receipt | complete — 4.31× throughput, 4.49× better p50 on the container backing |
 | 36 | Real-process crash-consistency court: `SIGKILL` the `cmd/orfscrashtest` writer mid-append, reopen read-write (quarantine MOVES the abandoned tail, never truncates), prove the committed prefix is byte-identical and the recovered root is a committed boundary, `verify --deep`, and publish `evidence/crash.json` | complete — 1000 kills, 379 abandoned tails (4 torn / 375 uncommitted) all quarantined; 0 truncations / 0 prefix mismatches / 0 recover failures |
 | 37 | Operator observability: a dependency-free Prometheus exposition (`orfs metrics <backing>`, `internal/metrics` + `internal/observe`), the capacity breach counter, the group-committer barrier histogram + batch stats persisted as a derived snapshot, the key values surfaced in `doctor --capacity`, and an append-only WORM audit-log-sink case study + Grafana dashboard | complete — `evidence/worm-case-study.json`; 8 MiB appended, 209 rec/s, append ≈ 4.5 ms p50 vs barrier ≤ 1 µs (the FUSE tax), amplification 1.115× |
-| 38 | Cross-language compatibility court: build the Rust reference (`rust:1.99.0-slim-bookworm`, capped) and drive Rust ↔ Go on the same volumes — frozen fixtures both ways, a rich Rust volume read by Go, a Go volume read by Rust, alternating mutations, recovery after a torn tail (new-segment and in-place) and after a real `SIGKILL` of the other mutator, and byte identity — publishing `evidence/correctness/crosslang.json` | complete, with real findings — 9 of 10 matrix cases pass; the Go writer emits `CTIME_UPDATE` (`0x0017`), a mandatory record type absent from the Rust registry, so the Rust reader refuses any Go volume that used hard link / rename-overwrite / chmod / unlink; a shared (Go *and* Rust) writable-open defect on an in-place torn tail is recorded as a finding; one reader bug was fixed (`TX_BEGIN` advisory `expected_record_count == 0` now means “unset”, as the reference does) |
+| 38 | Cross-language compatibility court: build the Rust reference (`rust:1.99.0-slim-bookworm`, capped) and drive Rust ↔ Go on the same volumes — frozen fixtures both ways, a rich Rust volume read by Go, a Go volume read by Rust, alternating mutations, recovery after a torn tail (new-segment and in-place) and after a real `SIGKILL` of the other mutator, and byte identity — publishing `evidence/correctness/crosslang.json` | complete — 12/12 matrix cases pass. The Go reader accepts every Rust-written volume; the Go *writer* defaults to a native profile (`CTIME_UPDATE` 0x0017, `MKNOD_CREATE` 0x0016) the reference cannot express, plus a new opt-in **compatibility profile** (`ORFS_COMPAT=1` / `mount --compat`) whose volumes the reference reads (its full-op case now passes on both `verify --deep` and a mount read-back). The native profile is asserted as an explicit gate (`go_native_profile_gated`) and the empirical Step-1 finding is pinned (`reference_optional_record_policy`): the reference refuses in-bracket *optional* records too, so bit 15 is not an escape hatch. A shared (Go *and* Rust) writable-open defect on an in-place torn tail remains a finding; one reader bug was fixed earlier (`TX_BEGIN` advisory `expected_record_count == 0` now means “unset”) |
 
 ## Phase 14 provenance note
 
@@ -64,21 +64,40 @@ recorded as a finding in `evidence/correctness/crosslang.json`.
 
 ## Cross-language findings (phase 38)
 
-The cross-language court found one genuine Rust↔Go incompatibility. Go writes
-`CTIME_UPDATE` (`0x0017`) — and, for special files, `MKNOD_CREATE` (`0x0016`) —
-mandatory record types that the Rust reference's registry does not define (it
-ends at `PERMISSION_CHANGE`, `0x0015`) and that `docs/ON_DISK.md` §3.3 does not
-list either. Go emits `CTIME_UPDATE` on hard link, rename-overwrite, chmod, and
-unlink (see `internal/namespace/mutate.go`); a Rust reader treats the type as an
-unknown *mandatory* record and refuses the volume, so `orfs verify --deep` and
-`orfs mount` fail with `unknown mandatory record type 0x0017`. The behaviour is
-deliberate on the Go side (`TestMetadataOperationsAdvanceCtime`,
-`TestPayloadMagicsOnDisk`), and the Rust format cannot express a ctime-only
-advance (it derives `ctime` from `mtime` on `INODE_SETATTR`), so this is a
-format-expressiveness decision for the maintainer rather than an accidental bug.
-The court isolates it: every Rust→Go case and every Go→Rust case that avoids
-those four operations passes, including alternating mutations and recovery after
-an interrupted write.
+The cross-language court found one genuine Rust↔Go incompatibility, now resolved
+by an explicit compatibility profile rather than by weakening the native format.
+Go's native writer emits `CTIME_UPDATE` (`0x0017`) — and, for special files,
+`MKNOD_CREATE` (`0x0016`) — mandatory record types that the Rust reference's
+registry does not define (it ends at `PERMISSION_CHANGE`, `0x0015`). Go emits
+`CTIME_UPDATE` on hard link, rename-overwrite, chmod, and unlink (see
+`internal/namespace/mutate.go`); a Rust reader treats the type as an unknown
+*mandatory* record and refuses the volume, so `orfs verify --deep` and
+`orfs mount` fail with `unknown mandatory record type 0x0017`.
+
+**Empirical Step-1 result (measured against the real `orfs` 0.2.0 binary).** The
+obvious remedy — move the two types into the format's *optional* space (set bit
+15, which the format reserves for records a reader “may skip”) — was tested and
+rejected. A volume whose transaction carried a `0x8017` record with the bracket
+counts Go computes today is still refused by the reference:
+`record type 0x8017 is optional and has no known semantics`. Its `verify --deep`
+Plane-B index rebuild (`Index::from_log` → `apply_record`) and its `mount` both
+call `Record::known_type()`, which hard-errors on an optional-unknown type; only
+its log *scan* counts optional records into the `TX_COMMIT` bracket. So bit 15
+is not a compatibility escape hatch, and — independently — skipping a
+`MKNOD_CREATE` would leave a `DENTRY_ADD` naming an inode the reference never
+created. The court reproduces this as `reference_optional_record_policy`.
+
+**Remediation.** A new opt-in **compatibility profile** (`ORFS_COMPAT=1`, or
+`orfs mount --compat`; programmatically `volume.WithCompat()`): the writer emits
+only the reference registry and semantics — no `CTIME_UPDATE` (ctime is derived
+from mtime on `INODE_SETATTR`, exactly as the reference does) and no
+`MKNOD_CREATE` (special-file creation is refused with `EOPNOTSUPP`). The
+**default stays native** (full POSIX ctime and special files); see
+`docs/MIGRATION.md` §4a and `docs/ON_DISK.md` §3.3. The court now writes the Go
+side of every Go→Rust case in the compatible profile (12/12 pass, including the
+full-op case on both `verify --deep` and a mount read-back), and asserts the
+native-profile divergence as an explicit gate (`go_native_profile_gated`) instead
+of claiming compatibility.
 
 The reader side had one real bug, now fixed: Go treated `TX_BEGIN`'s advisory
 `expected_record_count == 0` (which the Rust low-level writer emits, and which

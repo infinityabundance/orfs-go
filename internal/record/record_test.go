@@ -287,3 +287,20 @@ func TestTypeClassification(t *testing.T) {
 		t.Errorf("unknown name = %q", TypeName(0x0100))
 	}
 }
+
+// TestReferenceRegistryBoundary pins which codes the Rust reference's format-1
+// registry defines. MKNOD_CREATE (0x0016) and CTIME_UPDATE (0x0017) are Go-only
+// mandatory extensions, so a native Go volume that carries them is refused by
+// the reference; the compatibility profile never emits them.
+func TestReferenceRegistryBoundary(t *testing.T) {
+	for code := uint16(0x0001); code <= ReferenceRegistryMax; code++ {
+		if !InReferenceRegistry(code) {
+			t.Errorf("0x%04X should be in the reference registry", code)
+		}
+	}
+	for _, code := range []uint16{TypeMknodCreate, TypeCtimeUpdate, 0x8017, 0x0100} {
+		if InReferenceRegistry(code) {
+			t.Errorf("0x%04X must be outside the reference registry", code)
+		}
+	}
+}

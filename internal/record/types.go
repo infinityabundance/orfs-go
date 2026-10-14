@@ -3,6 +3,15 @@ package record
 import "fmt"
 
 // Record type codes (format_version = 1). Bit 15 marks optional extensions.
+//
+// The reference's "format-1 core" registry ends at PERMISSION_CHANGE (0x0015).
+// MKNOD_CREATE (0x0016) and CTIME_UPDATE (0x0017) are Go-only *mandatory*
+// extensions: the Rust reference defines neither, cannot express a ctime-only
+// advance, and cannot represent a special-file inode, so it refuses a volume
+// that carries them ("unknown mandatory record type 0xNNNN"). This build emits
+// them only in its native profile; the compatibility profile (ORFS_COMPAT=1 /
+// `mount --compat`) never emits either. See docs/ON_DISK.md §3.3 and
+// docs/MIGRATION.md §4a.
 const (
 	TypeVolumeGenesis    uint16 = 0x0001
 	TypeTxBegin          uint16 = 0x0002
@@ -25,9 +34,23 @@ const (
 	TypeSnapshotRoot     uint16 = 0x0013
 	TypeIndexCheckpoint  uint16 = 0x0014
 	TypePermissionChange uint16 = 0x0015
-	TypeMknodCreate      uint16 = 0x0016
-	TypeCtimeUpdate      uint16 = 0x0017
+	// TypeMknodCreate is a Go-only mandatory extension (special files).
+	TypeMknodCreate uint16 = 0x0016
+	// TypeCtimeUpdate is a Go-only mandatory extension (a ctime-only advance).
+	TypeCtimeUpdate uint16 = 0x0017
 )
+
+// ReferenceRegistryMax is the highest record type code the Rust reference's
+// format-1 registry defines (PERMISSION_CHANGE). A record with a code above it,
+// or with bit 15 set, is outside the registry.
+const ReferenceRegistryMax uint16 = TypePermissionChange
+
+// InReferenceRegistry reports whether a code is defined by the Rust reference's
+// format-1 registry — a record the reference can both scan and apply.
+func InReferenceRegistry(code uint16) bool {
+	_, ok := typeName[code]
+	return ok && code <= ReferenceRegistryMax
+}
 
 var typeName = map[uint16]string{
 	TypeVolumeGenesis:    "VOLUME_GENESIS",

@@ -93,6 +93,7 @@ type Volume struct {
 	cpEveryBytes        uint64
 	cpCorrupt           checkpoint.CorruptPolicy
 	cpForceFull         bool
+	compat              bool
 	sinceCheckpointTxns uint64
 	lastCheckpointRoot  uint64
 	mountReport         *checkpoint.Report
@@ -203,6 +204,10 @@ func (v *Volume) buildIndex(publish bool) error {
 
 // Index returns the reconstructed namespace at the committed root.
 func (v *Volume) Index() *index.Index { return v.index }
+
+// Compat reports whether this volume is in the Rust-reference compatibility
+// profile: writes stay inside the reference's registry and semantics.
+func (v *Volume) Compat() bool { return v.compat }
 
 // MountReport returns how the committed index was reconstructed at open
 // (checkpoint vs full replay, discovery source, bytes replayed).
@@ -325,6 +330,7 @@ func applyVolumeOptions(v *Volume, opts []Option) {
 	v.cpEveryBytes = o.CheckpointEveryBytes
 	v.cpCorrupt = o.CheckpointCorrupt
 	v.cpForceFull = o.ForceFullReplay
+	v.compat = o.Compat
 }
 
 func randomUUID() ([16]byte, error) {

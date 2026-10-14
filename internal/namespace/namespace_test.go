@@ -441,6 +441,69 @@ func TestMetadataOperationsAdvanceCtime(t *testing.T) {
 	}
 }
 
+// TestCompatProfileStaysInReferenceRegistry pins the compatibility gate: in the
+// Rust-reference compatibility profile a writer emits only the reference's
+// format-1 registry (no CTIME_UPDATE, no MKNOD_CREATE), so a volume it wrote
+// stays readable by the reference.
+func TestCompatProfileStaysInReferenceRegistry(t *testing.T) {
+	backing := t.TempDir()
+	v, err := volume.Init(backing, volume.InitOptions{SegmentSize: 64 * 1024}, volume.WithCompat())
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	ns := namespace.New(v)
+	if !ns.Compat() {
+		t.Fatal("namespace should be in the compatibility profile")
+	}
+	cred := namespace.Credential{}
+	root := record.RootInode
+
+	f, err := ns.Create(cred, root, "f", 0o644, 0, 0)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	// Each of these emits CTIME_UPDATE in the native profile.
+	if err := ns.Setattr(cred, f.ID, namespace.SetattrRequest{Mode: ptr(uint32(0o600))}); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	if err := ns.Link(cred, root, "g", f.ID); err != nil {
+		t.Fatalf("link: %v", err)
+	}
+	if err := ns.Unlink(cred, root, "g"); err != nil {
+		t.Fatalf("unlink: %v", err)
+	}
+	// A special file would need MKNOD_CREATE, which the reference cannot express.
+	if _, err := ns.Mknod(cred, root, "p", record.KindFifo, 0o644, 0, 0, 0); err == nil {
+		t.Fatal("mknod must be refused in the compatibility profile")
+	}
+	v.Close()
+
+	scan, err := log.ScanLog(log.Dir(backing))
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	for code, n := range scan.ByType {
+		if !record.InReferenceRegistry(code) {
+			t.Fatalf("compat volume emitted out-of-registry type 0x%04X (%s) x%d", code, record.TypeName(code), n)
+		}
+	}
+}
+
+// TestCompatProfileFromEnvironment pins the ORFS_COMPAT=1 switch: the profile is
+// selected without any per-call option, as the cross-language court relies on.
+func TestCompatProfileFromEnvironment(t *testing.T) {
+	t.Setenv("ORFS_COMPAT", "1")
+	backing := t.TempDir()
+	v, err := volume.Init(backing, volume.InitOptions{SegmentSize: 64 * 1024})
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	defer v.Close()
+	if !v.Compat() || !namespace.New(v).Compat() {
+		t.Fatal("ORFS_COMPAT=1 should select the compatibility profile")
+	}
+}
+
 func TestLinkUpdatesParentTimestamps(t *testing.T) {
 	backing := t.TempDir()
 	v, _ := volume.Init(backing, volume.InitOptions{})

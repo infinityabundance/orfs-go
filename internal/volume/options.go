@@ -22,6 +22,15 @@ type Options struct {
 	// ForceFullReplay ignores every checkpoint and replays the whole prefix. It
 	// exists for measurement baselines, never for production recovery.
 	ForceFullReplay bool
+	// Compat restricts *new* writes to the Rust reference's format-1 registry and
+	// semantics, so a volume this process wrote stays readable by the reference.
+	// It suppresses CTIME_UPDATE (ctime is then derived from mtime, exactly as
+	// the reference does) and refuses special-file creation (the reference cannot
+	// express MKNOD_CREATE, and skipping it would leave a dangling dentry). It is
+	// opt-in because it gives up POSIX ctime-only advances; see docs/ON_DISK.md
+	// §3.3 and docs/MIGRATION.md §4a. Reading is unaffected — the Go reader always
+	// accepts every record type it knows, in either profile.
+	Compat bool
 }
 
 // Option mutates an Options.
@@ -47,8 +56,27 @@ func WithForceFullReplay() Option {
 	return func(o *Options) { o.ForceFullReplay = true }
 }
 
+// WithCompat selects the Rust-reference compatibility profile: new writes stay
+// inside the reference's registry and semantics (no CTIME_UPDATE, no
+// MKNOD_CREATE).
+func WithCompat() Option {
+	return func(o *Options) { o.Compat = true }
+}
+
+// WithCompatProfile sets the compatibility profile explicitly. It lets the
+// `mount --compat` flag override the ORFS_COMPAT environment default in either
+// direction.
+func WithCompatProfile(enabled bool) Option {
+	return func(o *Options) { o.Compat = enabled }
+}
+
+// EnvironCompat reports whether the ORFS_COMPAT environment variable requests
+// the compatibility profile. It is the CLI flag's default.
+func EnvironCompat() bool { return envFlag("ORFS_COMPAT") }
+
 // defaultOptions reads the opt-in policy from the environment. Checkpointing is
-// off unless ORFS_CHECKPOINT_EVERY names a positive transaction interval.
+// off unless ORFS_CHECKPOINT_EVERY names a positive transaction interval; the
+// reference compatibility profile is off unless ORFS_COMPAT is truthy.
 func defaultOptions() Options {
 	var o Options
 	if v := os.Getenv("ORFS_CHECKPOINT_EVERY"); v != "" {
@@ -61,5 +89,18 @@ func defaultOptions() Options {
 			o.CheckpointEveryBytes = n
 		}
 	}
+	if envFlag("ORFS_COMPAT") {
+		o.Compat = true
+	}
 	return o
+}
+
+// envFlag reports whether an environment variable is set to a truthy value.
+// A variable that is set but empty, "0", "false", or "no" is not truthy.
+func envFlag(name string) bool {
+	switch os.Getenv(name) {
+	case "1", "true", "TRUE", "yes", "YES", "on", "ON":
+		return true
+	}
+	return false
 }

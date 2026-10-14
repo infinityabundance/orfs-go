@@ -98,7 +98,7 @@ usage: orfs <command> [flags]
   checkpoint <backing> [--json]
   doctor [--capacity --backing <dir> [--reserve bytes]] [--json]
   metrics <backing> [--json] [--skip-verify]
-  mount <backing> <mountpoint> [--direct-io] [--transport f0|f0-single|fuse-uring] [--readers N]
+  mount <backing> <mountpoint> [--direct-io] [--transport f0|f0-single|fuse-uring] [--readers N] [--compat]
   unmount <mountpoint>
   stat <backing> [--json]
 
@@ -473,6 +473,7 @@ func cmdMount(args []string) int {
 	attrTTL := fs.Float64("attr-ttl-ms", 1000, "attribute cache TTL in ms")
 	entryTTL := fs.Float64("entry-ttl-ms", 1000, "entry cache TTL in ms")
 	fsName := fs.String("fsname", "", "filesystem name")
+	compat := fs.Bool("compat", volume.EnvironCompat(), "Rust-reference compatibility profile: new writes use only the reference's registry and semantics (no CTIME_UPDATE, no special files)")
 	pos, err := parseFlags(fs, args)
 	if err != nil {
 		return 2
@@ -502,7 +503,9 @@ func cmdMount(args []string) int {
 	if *readOnly {
 		mode = log.ReadOnly
 	}
-	v, err := volume.Open(pos[0], mode)
+	var vopts []volume.Option
+	vopts = append(vopts, volume.WithCompatProfile(*compat))
+	v, err := volume.Open(pos[0], mode, vopts...)
 	if err != nil {
 		return fail(err)
 	}

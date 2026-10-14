@@ -90,17 +90,59 @@ v0 and v1; and the unknown-higher-version refusal.
 > `expected_*` values, and record-header inode stamps — which is recorded as a
 > finding in `evidence/correctness/crosslang.json` rather than hidden.
 
-## 4a. Cross-language interchange caveat
+## 4a. Cross-language interchange and the compatibility profile
 
-Reading is symmetric for every record type the Rust registry defines (`0x0001`–
-`0x0015`): the court mounts a Rust-written volume in Go and a Go-written volume
-in Rust, with identical read-backs. Writing is **not** fully symmetric: Go emits
-`CTIME_UPDATE` (`0x0017`, and `MKNOD_CREATE`, `0x0016`) for hard link,
-rename-overwrite, chmod, unlink (and special files), which the Rust reader — and
-`docs/ON_DISK.md` §3.3 — do not define. A Rust reader refuses such a volume with
-`unknown mandatory record type 0x0017`. The Go reader, by contrast, accepts any
-Rust-written volume; in particular it now treats `TX_BEGIN`'s advisory
-`expected_record_count == 0` as “unset”, exactly as the Rust verifier does.
+Reading is symmetric for every record type the reference registry defines
+(`0x0001`–`0x0015`): the court mounts a Rust-written volume in Go, and a
+Go-written volume in Rust, with identical read-backs.
+
+Writing is **not** fully symmetric by default. This build's native profile emits
+two mandatory record types the reference does not define (`docs/ON_DISK.md`
+§3.3): `CTIME_UPDATE` (`0x0017`) for hard link, rename-overwrite, chmod and
+unlink, and `MKNOD_CREATE` (`0x0016`) for special files. A reference reader
+refuses such a volume with `unknown mandatory record type 0x0017`.
+
+Moving those types into the format's *optional* space (bit 15) was measured
+against the real reference and does **not** help. The reference's replay
+(`Index::from_log` → `apply_record`, reached by both `verify --deep` and `mount`)
+calls `Record::known_type()`, which hard-errors on an optional-unknown record
+(`record type 0xNNNN is optional and has no known semantics`). Only the
+reference's log *scan* counts an optional record into the `TX_COMMIT` bracket;
+its replay does not skip it. So optional buys nothing here.
+
+The supported interchange profile is therefore explicit. Under the
+**compatibility profile** the writer emits only the reference registry and
+semantics:
+
+- `CTIME_UPDATE` is suppressed; `ctime` is derived from `mtime` on
+  `INODE_SETATTR`, exactly as the reference does — a metadata-only change
+  (chmod/chown/link/unlink) therefore does not advance `ctime`.
+- `MKNOD_CREATE` is never emitted: creating a special file (fifo/char/block/
+  socket) is refused with `EOPNOTSUPP`. Optional-skipping it cannot work — the
+  following `DENTRY_ADD` would name an inode the reference never created — and the
+  reference has no way to represent a special-file inode.
+
+Select it per process or per mount:
+
+```sh
+ORFS_COMPAT=1 orfs mount <backing> <mountpoint>
+orfs mount --compat <backing> <mountpoint>   # --compat=false overrides ORFS_COMPAT
+```
+
+Programmatically: `volume.WithCompat()` / `volume.WithCompatProfile(bool)`.
+
+**The default is the native profile** — full POSIX ctime semantics and special
+files. The compatibility profile is opt-in because it gives those up; making it
+native by default would silently lose POSIX `ctime` correctness. A volume may mix
+profiles over time (each `mount` chooses), and reading is unaffected in either
+direction: the Go reader always accepts every type it knows, from any writer. The
+cross-language court (`scripts/container-crosslang.sh`) runs the Go writer in the
+compatibility profile, and additionally asserts — as an explicit gate rather than
+a silent pass — that the native profile is refused by the reference. See
+`evidence/correctness/crosslang.json`.
+
+The Go reader also treats `TX_BEGIN`'s advisory `expected_record_count == 0` as
+“unset”, exactly as the Rust verifier does.
 
 ## 5. Adding a future version
 

@@ -33,6 +33,13 @@ type Namespace struct {
 	vol *volume.Volume
 	now func() record.Timespec
 
+	// compat is the Rust-reference compatibility profile. When set, mutations
+	// never emit a record type outside the reference's format-1 registry and
+	// semantics: no CTIME_UPDATE (ctime is derived from mtime, as the reference
+	// does) and no MKNOD_CREATE (special files are refused). It is a *writer*
+	// policy; reads are unaffected. See docs/MIGRATION.md §4a.
+	compat bool
+
 	manifest ManifestSource
 
 	mu sync.RWMutex
@@ -40,11 +47,26 @@ type Namespace struct {
 
 // New builds a namespace over a volume.
 func New(v *volume.Volume) *Namespace {
-	return &Namespace{vol: v, now: realNow}
+	return &Namespace{vol: v, now: realNow, compat: v.Compat()}
 }
 
 // Volume returns the backing volume.
 func (ns *Namespace) Volume() *volume.Volume { return ns.vol }
+
+// Compat reports whether this namespace is in the Rust-reference compatibility
+// profile.
+func (ns *Namespace) Compat() bool { return ns.compat }
+
+// ctimeRec returns the records that advance an inode's ctime for a metadata-only
+// change. In the compatibility profile it returns nothing: the reference cannot
+// express a ctime-only advance and derives ctime from mtime, so a compatible
+// writer omits the record and lets the same derive-on-setattr rule apply.
+func (ns *Namespace) ctimeRec(id uint64, tm record.Timespec) []*record.Record {
+	if ns.compat {
+		return nil
+	}
+	return []*record.Record{mkRec(record.TypeCtimeUpdate, 0, record.CtimeUpdate{InodeID: id, Ctime: tm}.Encode())}
+}
 
 // SetManifestSource installs the concealed read seam. A nil source disables it.
 func (ns *Namespace) SetManifestSource(src ManifestSource) { ns.manifest = src }

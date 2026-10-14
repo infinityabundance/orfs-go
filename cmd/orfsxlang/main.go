@@ -177,7 +177,7 @@ func sortedTypes(m map[uint16]uint64) []typeCount {
 }
 
 // types prints the committed record-type histogram, flagging every code that is
-// outside the registry the Rust reference understands (0x0001..0x0015).
+// outside the format-1 registry the Rust reference defines (0x0001..0x0015).
 func types(backing string) error {
 	scan, err := log.ScanLog(log.Dir(backing))
 	if err != nil {
@@ -185,7 +185,7 @@ func types(backing string) error {
 	}
 	for _, tc := range sortedTypes(scan.ByType) {
 		known := "rust_known"
-		if tc.code > 0x0015 || tc.code&record.OptionalTypeBit != 0 {
+		if !record.InReferenceRegistry(tc.code) {
 			known = "not_in_rust_registry"
 		}
 		fmt.Printf("0x%04X %s count=%d %s\n", tc.code, record.TypeName(tc.code), tc.count, known)

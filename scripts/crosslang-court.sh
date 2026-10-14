@@ -25,11 +25,24 @@ export LC_ALL
 ORFS_GO=${ORFS_GO:-/out/orfs}
 ORFS_RS=${ORFS_RS:-/out-rs/orfs}
 ORFS_XLANG=${ORFS_XLANG:-/out/orfsxlang}
+ORFS_OPTPROBE=${ORFS_OPTPROBE:-/out/orfsoptprobe}
 RUST_FIXTURES=${RUST_FIXTURES:-/rust-fixtures}
 GO_FIXTURES=${GO_FIXTURES:-/src/tests/fixtures}
 EVID=${ORFS_EVIDENCE_DIR:-/evidence}
 RS_SEG=${RS_SEG:-262144}
 GO_SEG=${GO_SEG:-262144}
+
+# The reference's format-1 registry is a strict subset of this build's: the Rust
+# reference defines neither CTIME_UPDATE (0x0017) nor MKNOD_CREATE (0x0016), and
+# it refuses a volume that carries them. Its `verify --deep` index rebuild and its
+# `mount` both call `Record::known_type()`, which hard-errors on a code it cannot
+# apply — so "optional" (bit 15) records are NOT skipped by the reference's
+# replay either (Step-1 finding; see evidence/correctness/). Therefore the Go
+# *writer* runs in its compatibility profile here: new writes stay inside the
+# reference's registry. The native profile is asserted separately
+# (case_go_native_profile_gated) rather than assumed compatible.
+ORFS_COMPAT=1
+export ORFS_COMPAT
 
 missing=""
 [ -x "$ORFS_GO" ]    || missing="$missing Go:$ORFS_GO"
@@ -201,8 +214,10 @@ ops_go_compatible() {
   return 0
 }
 
-# ops_go_full adds the operations whose Go records the Rust registry does not
-# define (hard link, rename-overwrite, chmod, unlink).
+# ops_go_full adds the metadata operations that a native Go writer expresses with
+# the Go-only CTIME_UPDATE record (hard link, rename-overwrite, chmod, unlink).
+# Under the compatibility profile (ORFS_COMPAT=1) the ctime-only advance is
+# omitted, so the volume stays inside the reference's registry.
 ops_go_full() {
   mp=$1
   ops_go_compatible "$mp" || return 1
@@ -336,7 +351,12 @@ case_go_volume_rust_compatible() {
   fi
 }
 
-# --- case 5: a Go-written volume (full op set) read by Rust — the divergence --
+# --- case 5: a Go-written volume (full op set) read by Rust, compatible profile
+#
+# The native profile emits CTIME_UPDATE for hard link / rename-overwrite / chmod /
+# unlink; the court writes the same operations under the compatibility profile
+# (the exported ORFS_COMPAT=1), so the volume stays inside the reference's
+# registry. Rust must verify it AND mount it with a read-back identical to Go's.
 
 case_go_volume_rust_full() {
   id=go_volume_read_by_rust_full_ops
@@ -351,24 +371,96 @@ case_go_volume_rust_full() {
   readback "$W/gmnt" > "$W/expected.txt"
   unmount_now "$W/gmnt"
 
+  fail=""
   unknown=$("$ORFS_XLANG" types "$W/vol" 2>/dev/null | grep not_in_rust_registry || true)
-  rsout=$("$ORFS_RS" verify --deep "$W/vol" 2>&1) && rsok=1 || rsok=0
-  printf '%s\n%s\n' '--- full-op Go volume, Rust verify ---' "$rsout" >> "$DIAG"
-  printf '%s\n%s\n' '--- full-op Go volume, record types not in the Rust registry ---' "$unknown" >> "$DIAG"
-
-  if [ "$rsok" = 1 ]; then
-    record "$id" "go->rust" pass "Rust verify --deep accepted the full-op Go volume"
-    return 0
+  [ -z "$unknown" ] || fail="$fail go_emitted_rust_unknown_type"
+  "$ORFS_RS" verify --deep "$W/vol" >"$W/rsverify" 2>&1 || fail="$fail verify"
+  printf '%s\n%s\n' '--- full-op Go volume (compat profile), Rust verify ---' "$(cat "$W/rsverify" 2>/dev/null)" >> "$DIAG"
+  if mount_up "$ORFS_RS" "$W/vol" "$W/rmnt"; then
+    readback "$W/rmnt" > "$W/got.txt"
+    unmount_now "$W/rmnt"
+    diff -u "$W/expected.txt" "$W/got.txt" >> "$DIAG" 2>&1 || fail="$fail content"
+  else
+    fail="$fail rsmount"
   fi
-  firstline=$(printf '%s\n' "$rsout" | head -1)
-  record "$id" "go->rust" fail "Rust rejected the Go volume: $firstline"
-  printf '%s\n' "$unknown" | while IFS= read -r line; do
-    [ -n "$line" ] || continue
-    code=$(printf '%s' "$line" | awk '{print $1}')
-    name=$(printf '%s' "$line" | awk '{print $2}')
-    finding "$code $name" "type registry" \
-      "Go emits mandatory record type $code ($name) for hard link / rename-overwrite / chmod / unlink; the Rust reference's registry ends at 0x0015 and refuses an unknown mandatory type, so the Rust reader (verify and mount) rejects the volume"
-  done
+
+  if [ -z "$fail" ]; then
+    record "$id" "go->rust" pass \
+      "Go (compatibility profile) wrote mkdir+create+write+symlink+rename+hardlink+rename-overwrite+chmod+unlink+truncate+sparse+xattr; Rust verify --deep PASS and mount read-back identical to Go's"
+  else
+    record "$id" "go->rust" fail "failures:$fail"
+  fi
+}
+
+# --- case 5b: the native profile is an explicit, asserted gate ----------------
+#
+# The native Go profile emits CTIME_UPDATE (0x0017) for chmod/hardlink/
+# rename-overwrite/unlink — a mandatory record type the reference's registry does
+# not define. The court asserts the gate honestly instead of papering over it as
+# compatibility: the reference must REFUSE such a volume, and the refusal must
+# name the mandatory type.
+case_go_native_profile_gated() {
+  id=go_native_profile_gated
+  W="$WORK/native"; rm -rf "$W"; mkdir -p "$W"
+  "$ORFS_GO" init "$W/vol" --segment-size "$GO_SEG" >/dev/null 2>&1 || {
+    record "$id" "go->rust" fail "go init failed"; return 0; }
+  # --compat=false overrides the court's exported ORFS_COMPAT=1 for this mount.
+  mount_up "$ORFS_GO" "$W/vol" "$W/gmnt" --compat=false || {
+    record "$id" "go->rust" fail "go mount (native profile) failed"; return 0; }
+  printf 'x\n' > "$W/gmnt/f" 2>/dev/null || true
+  chmod 600 "$W/gmnt/f" 2>/dev/null || true
+  unmount_now "$W/gmnt"
+
+  types=$("$ORFS_XLANG" types "$W/vol" 2>/dev/null || true)
+  has_ctime=$(printf '%s\n' "$types" | grep -c '0x0017' || true)
+  rsout=$("$ORFS_RS" verify --deep "$W/vol" 2>&1) && rsok=1 || rsok=0
+  printf '%s\n%s\n' '--- native-profile Go volume, Rust verify (refusal expected) ---' "$rsout" >> "$DIAG"
+
+  if [ "$has_ctime" -ge 1 ] && [ "$rsok" = 0 ] \
+     && printf '%s' "$rsout" | grep -q 'unknown mandatory record type 0x0017'; then
+    record "$id" "go->rust" pass \
+      "native profile emitted CTIME_UPDATE (0x0017); the reference refused it with 'unknown mandatory record type 0x0017' — the divergence is gated, not hidden (use ORFS_COMPAT=1 or mount --compat for interchange)"
+    finding "native profile CTIME_UPDATE 0x0017" "type registry" \
+      "In its native profile this build emits CTIME_UPDATE (0x0017) for chmod/hardlink/rename-overwrite/unlink and MKNOD_CREATE (0x0016) for special files. The Rust reference's format-1 registry ends at PERMISSION_CHANGE (0x0015); it cannot express a ctime-only advance (it derives ctime from mtime on INODE_SETATTR) or a special-file inode, so it refuses such a volume. Moving the type into the optional space (bit 15) does NOT help: the reference's verify --deep index rebuild and its mount both call known_type(), which hard-errors on an optional type too. The supported interchange profile is ORFS_COMPAT=1 / mount --compat."
+  else
+    record "$id" "go->rust" fail \
+      "expected the native profile to emit 0x0017 and the reference to refuse it (has_ctime=$has_ctime rsok=$rsok)"
+  fi
+}
+
+# --- case 5c: the reference does not skip an in-bracket OPTIONAL record --------
+#
+# Empirical Step 1: the format reserves bit 15 for "optional" records a reader
+# "may skip", but the reference's replay does not implement that. A record with
+# bit 15 set, placed inside a transaction with brackets this build computes, is
+# still refused — by the Plane-B index rebuild that `verify --deep` performs and
+# by `mount` — with "record type 0xNNNN is optional and has no known semantics"
+# (Record::known_type). This pins why the remediation is an explicit
+# compatibility profile rather than moving CTIME_UPDATE into the optional space.
+case_reference_optional_policy() {
+  id=reference_optional_record_policy
+  W="$WORK/opt"; rm -rf "$W"; mkdir -p "$W"
+  [ -x "$ORFS_OPTPROBE" ] || { record "$id" "go->rust" skip "no orfsoptprobe binary at $ORFS_OPTPROBE"; return 0; }
+  "$ORFS_OPTPROBE" "$W/vol-opt" 8017 >"$W/probe" 2>&1 || { record "$id" "go->rust" fail "probe (0x8017) failed"; return 0; }
+  "$ORFS_OPTPROBE" "$W/vol-mand" 0017 >>"$W/probe" 2>&1 || { record "$id" "go->rust" fail "probe (0x0017) failed"; return 0; }
+
+  rsopt=$("$ORFS_RS" verify --deep "$W/vol-opt" 2>&1) && optok=1 || optok=0
+  rsmand=$("$ORFS_RS" verify --deep "$W/vol-mand" 2>&1) && mandok=1 || mandok=0
+  {
+    printf '%s\n' '--- optional-record probe ---' "$(cat "$W/probe")"
+    printf '%s\n' '--- Rust verify (0x8017, optional) ---' "$rsopt"
+    printf '%s\n' '--- Rust verify (0x0017, mandatory) ---' "$rsmand"
+  } >> "$DIAG"
+
+  if [ "$mandok" = 0 ] && printf '%s' "$rsmand" | grep -q 'unknown mandatory record type 0x0017' \
+     && [ "$optok" = 0 ] && printf '%s' "$rsopt" | grep -q 'optional and has no known semantics'; then
+    record "$id" "go->rust" pass \
+      "bit-15 optional record inside a transaction (brackets as this build computes them): the reference refuses it too (0x8017 -> 'optional and has no known semantics'; 0x0017 -> 'unknown mandatory record type') — optional does not buy compatibility"
+    finding "optional (bit 15) records" "reference replay" \
+      "The format reserves bit 15 for records a reader 'may skip', but the Rust reference's replay does not implement skipping: verify --deep's Plane-B index rebuild (Index::from_log -> apply_record) and mount both call Record::known_type(), which hard-errors on an optional-unknown type. So an in-bracket optional record is refused ('record type 0xNNNN is optional and has no known semantics'), not skipped. The scan machine (log::TxMachine) does count optional records into the TX_COMMIT bracket, so the bracket is not the obstacle — the replay is."
+  else
+    record "$id" "go->rust" fail "unexpected reference optional-record policy (optok=$optok mandok=$mandok)"
+  fi
 }
 
 # --- case 6: alternating mutations on one volume -----------------------------
@@ -639,6 +731,7 @@ case_byte_identity() {
 
 for c in case_rust_fixtures_go case_go_fixtures_rust case_rust_volume_go \
          case_go_volume_rust_compatible case_go_volume_rust_full \
+         case_go_native_profile_gated case_reference_optional_policy \
          case_alternating case_recovery case_recovery_sigkill \
          case_recovery_inplace case_byte_identity; do
   "$c" || record "$c" "internal" fail "case function returned non-zero"

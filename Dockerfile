@@ -37,7 +37,8 @@ RUN CGO_ENABLED=0 go build -o /out/orfs ./cmd/orfs \
  && CGO_ENABLED=0 go build -o /out/transportsummary ./cmd/transportsummary \
  && CGO_ENABLED=0 go build -o /out/orfsworm ./cmd/orfsworm \
  && CGO_ENABLED=0 go build -o /out/fuseuringprobe ./cmd/fuseuringprobe \
- && CGO_ENABLED=0 go build -o /out/orfsxlang ./cmd/orfsxlang
+ && CGO_ENABLED=0 go build -o /out/orfsxlang ./cmd/orfsxlang \
+ && CGO_ENABLED=0 go build -o /out/orfsoptprobe ./cmd/orfsoptprobe
 
 # Build the upstream pjdfstest suite into the image so the pjdfstest court can
 # run it without cloning at court time. gcc ships in the Go base image; the

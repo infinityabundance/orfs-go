@@ -89,9 +89,32 @@ an otherwise valid record check) is **corrupt**.
 `0x0013` `SNAPSHOT_ROOT`, `0x0014` `INDEX_CHECKPOINT`, `0x0015`
 `PERMISSION_CHANGE`.
 
-Bit 15 (`0x8000`) marks a type *optional*: an unknown optional type may be
-skipped; an unknown type with bit 15 clear is *mandatory* and stops the reader
-with a compatibility error.
+Codes `0x0001`–`0x0015` are the **reference registry**: exactly the set the Rust
+reference (`OrFS` 0.2.0) defines and can apply. This build additionally defines
+two *mandatory* Go-only extensions beyond it:
+
+| Code | Name | Why it exists |
+| --- | --- | --- |
+| `0x0016` | `MKNOD_CREATE` | special files (fifo/char/block/socket); `INODE_CREATE`'s kind field is file/dir/symlink only |
+| `0x0017` | `CTIME_UPDATE` | a ctime-only advance (hard link, rename-overwrite, chmod, unlink); `INODE_SETATTR` derives ctime from mtime |
+
+The reference's reader refuses a volume that carries either — `unknown mandatory
+record type 0xNNNN` — because it cannot express a ctime-only advance or a
+special-file inode. This build therefore offers a **compatibility profile**
+(`ORFS_COMPAT=1`, or `orfs mount --compat`) whose writer emits only `0x0001`–
+`0x0015`; see `docs/MIGRATION.md` §4a. In the default (native) profile the Go
+reader still accepts both, and any Rust-written volume.
+
+Bit 15 (`0x8000`) marks a type *optional*: the format reserves it for records a
+reader "may skip". **Measured caveat:** the reference does *not* implement
+skipping during replay — its `verify --deep` index rebuild (`Index::from_log`)
+and its `mount` both call `Record::known_type()`, which hard-errors on an
+optional-unknown type (`record type 0xNNNN is optional and has no known
+semantics`). Only its log *scan* (`log::TxMachine`) counts an optional record into
+the `TX_COMMIT` bracket. So an in-bracket optional record is refused by the
+reference, not skipped: optional is not a compatibility escape hatch. The court
+pins this in `reference_optional_record_policy`
+(`scripts/crosslang-court.sh`, `evidence/correctness/crosslang.json`).
 
 ## 4. Typed payloads
 

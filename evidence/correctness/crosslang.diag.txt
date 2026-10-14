@@ -25,15 +25,36 @@ type=DATA_EXTENT count=1
 /hello.txt file mode=0644 nlink=1 size=12 sha256=aec5a165bed9d7d50887dc896e73e3e474a636cc071ae3ac03281ee51cf5feae
 roundtrip: records=8 committed_root=995 byte_identical=true
 roundtrip: records=108 committed_root=13074 byte_identical=true
---- full-op Go volume, Rust verify ---
-orfs: incompatible on-disk format: unknown mandatory record type 0x0017
---- full-op Go volume, record types not in the Rust registry ---
-0x0017 CTIME_UPDATE count=4 not_in_rust_registry
---- recovery: Rust verify on torn-tail volume ---
-verifying /tmp/tmp.i3g3iL4OmI/rec/vol (deep)
-  [ok] volume_meta: uuid=ee15e0c2-fedb-4957-af7b-fc1f4db4b42a segment_size=262144 created_at=1791997931
+--- full-op Go volume (compat profile), Rust verify ---
+verifying /tmp/tmp.LaJ44bK8J6/govolfull/vol (deep)
+  [ok] volume_meta: uuid=bc00b997-e559-4ead-bbcb-3c45a89bdc6a segment_size=262144 created_at=1791998660
   [ok] volume_genesis: first committed record is VOLUME_GENESIS
-  [ok] genesis_matches_meta: genesis uuid=ee15e0c2-fedb-4957-af7b-fc1f4db4b42a segment_size=262144
+  [ok] genesis_matches_meta: genesis uuid=bc00b997-e559-4ead-bbcb-3c45a89bdc6a segment_size=262144
+  [ok] log_format_version: genesis log format version 1 (legacy=0, this build supports up to 1)
+  [ok] committed_root_is_boundary: root R=14768
+  [ok] commit_watermark: committed_root=14768 segment=0 valid_len=14768 physical_end=14768
+  [ok] segment_continuity: 1 segment(s)
+  [ok] tail: no torn or uncommitted tail
+  [ok] deep_replay_checksums: 122 committed records, CRC32C verified
+  [ok] transaction_brackets: 27 committed transactions: typed payloads and bracket checksums validated
+  [ok] previous_inode_offsets_backward: all previous_inode_offset values point backward
+  [ok] committed_record_count: 122 records (log reports 122)
+  [ok] namespace_index_rebuild: 9 inode(s), 7 dentry(ies); rebuild deterministic=true
+result: PASS
+--- native-profile Go volume, Rust verify (refusal expected) ---
+orfs: incompatible on-disk format: unknown mandatory record type 0x0017
+--- optional-record probe ---
+wrote /tmp/tmp.LaJ44bK8J6/opt/vol-opt: type=0x8017 optional=true committed_bytes=1459 sha256=4cb6b34086973fea95ad05c6fb1296044563c1b4cf905d54b233aa29b271883b
+wrote /tmp/tmp.LaJ44bK8J6/opt/vol-mand: type=0x0017 optional=false committed_bytes=1459 sha256=52d8e4b00493ad7bbe5f2cd5184dfdbaf70bed28beacb73a11e0c525fddfe153
+--- Rust verify (0x8017, optional) ---
+orfs: incompatible on-disk format: record type 0x8017 is optional and has no known semantics
+--- Rust verify (0x0017, mandatory) ---
+orfs: incompatible on-disk format: unknown mandatory record type 0x0017
+--- recovery: Rust verify on torn-tail volume ---
+verifying /tmp/tmp.LaJ44bK8J6/rec/vol (deep)
+  [ok] volume_meta: uuid=a8291718-f235-4b70-9bd1-ab47da9163b1 segment_size=262144 created_at=1791998663
+  [ok] volume_genesis: first committed record is VOLUME_GENESIS
+  [ok] genesis_matches_meta: genesis uuid=a8291718-f235-4b70-9bd1-ab47da9163b1 segment_size=262144
   [ok] log_format_version: genesis log format version 1 (legacy=0, this build supports up to 1)
   [ok] committed_root_is_boundary: root R=10198
   [ok] commit_watermark: committed_root=10198 segment=0 valid_len=10198 physical_end=10198
@@ -46,13 +67,14 @@ verifying /tmp/tmp.i3g3iL4OmI/rec/vol (deep)
   [ok] namespace_index_rebuild: 7 inode(s), 6 dentry(ies); rebuild deterministic=true
 result: PASS
 --- SIGKILL recovery: Go verify ---
-volume:            /tmp/tmp.i3g3iL4OmI/kill/vol
+volume:            /tmp/tmp.LaJ44bK8J6/kill/vol
 log format ver:    1
-uuid:              0c0f3a0692b94dd780f862df3248f5ea
-committed root:    5485189
-committed records: 44159
-committed txns:    11039
-segments:          21
+uuid:              ddce3945e426470c809f7ac35326e8d6
+committed root:    5505044
+committed records: 44319
+committed txns:    11079
+segments:          22
+abandoned tail:    104 byte(s) (uncommitted)
 inodes:            3
 dentries:          2
 checks:
@@ -61,10 +83,10 @@ checks:
   [ok] watermark
   [ok] replay: 3 inode(s), 2 dentr(ies)
 --- in-place torn tail: Rust verify ---
-verifying /tmp/tmp.i3g3iL4OmI/rec2/vol (deep)
-  [ok] volume_meta: uuid=9db8b3b7-bd6f-4b66-ab15-acac57452b64 segment_size=262144 created_at=1791997936
+verifying /tmp/tmp.LaJ44bK8J6/rec2/vol (deep)
+  [ok] volume_meta: uuid=ab4794c2-b377-43a4-8fc3-7a6302e0ad37 segment_size=262144 created_at=1791998667
   [ok] volume_genesis: first committed record is VOLUME_GENESIS
-  [ok] genesis_matches_meta: genesis uuid=9db8b3b7-bd6f-4b66-ab15-acac57452b64 segment_size=262144
+  [ok] genesis_matches_meta: genesis uuid=ab4794c2-b377-43a4-8fc3-7a6302e0ad37 segment_size=262144
   [ok] log_format_version: genesis log format version 1 (legacy=0, this build supports up to 1)
   [ok] committed_root_is_boundary: root R=10198
   [ok] commit_watermark: committed_root=10198 segment=0 valid_len=10198 physical_end=10198
