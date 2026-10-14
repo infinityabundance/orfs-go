@@ -75,3 +75,21 @@ docker_run_court() {
     -w /src \
     "${COURT_IMAGE}" "$@"
 }
+
+# docker_run_court_privileged is docker_run_court plus --privileged, for courts
+# that must create and mount loop devices (the cross-FS court's mkfs.ext4/xfs/
+# btrfs) or want the full device surface. It still runs the pinned court image as
+# root with the repository's evidence/ directory bind-mounted, and does not use
+# exec so one script can drive several courts sequentially.
+docker_run_court_privileged() {
+  mkdir -p "${REPO_ROOT}/evidence"
+  docker run --rm \
+    --platform linux/amd64 \
+    --privileged \
+    --network host \
+    --memory "${MEM_LIMIT}" --memory-swap "${MEMSWAP_LIMIT}" --cpus "${CPUS}" \
+    -e HOME=/tmp \
+    -v "${REPO_ROOT}/evidence":/evidence \
+    -w /src \
+    "${COURT_IMAGE}" "$@"
+}

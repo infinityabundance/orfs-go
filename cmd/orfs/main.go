@@ -7,6 +7,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -122,6 +123,7 @@ func cmdInit(args []string) int {
 	fs := newFlagSet("init")
 	segSize := fs.Uint64("segment-size", record.DefaultSegmentSize, "segment size in bytes")
 	reserve := fs.Uint64("reserve", 0, "backing bytes to keep free")
+	uuidHex := fs.String("uuid", "", "fixed 32-hex-digit volume uuid (default random); for reproducible bytes")
 	pos, err := parseFlags(fs, args)
 	if err != nil {
 		return 2
@@ -129,7 +131,17 @@ func cmdInit(args []string) int {
 	if len(pos) != 1 {
 		return fail(orfserr.Invalid("init requires exactly one <backing> directory"))
 	}
-	v, err := volume.Init(pos[0], volume.InitOptions{SegmentSize: *segSize, Reserve: *reserve})
+	opts := volume.InitOptions{SegmentSize: *segSize, Reserve: *reserve}
+	if *uuidHex != "" {
+		raw, err := hex.DecodeString(*uuidHex)
+		if err != nil || len(raw) != 16 {
+			return fail(orfserr.Invalid("uuid must be 32 hex digits"))
+		}
+		var u [16]byte
+		copy(u[:], raw)
+		opts.UUID = &u
+	}
+	v, err := volume.Init(pos[0], opts)
 	if err != nil {
 		return fail(err)
 	}

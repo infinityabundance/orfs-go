@@ -10,6 +10,8 @@
 package namespace
 
 import (
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -49,7 +51,15 @@ func (ns *Namespace) SetManifestSource(src ManifestSource) { ns.manifest = src }
 
 func (ns *Namespace) idx() *index.Index { return ns.vol.Index() }
 
+// realNow returns the current time, or a fixed timestamp when ORFS_CLOCK_EPOCH
+// is set. Pinning the clock (with a pinned volume UUID) makes the on-disk bytes
+// reproducible, which the cross-FS determinism court relies on.
 func realNow() record.Timespec {
+	if v := os.Getenv("ORFS_CLOCK_EPOCH"); v != "" {
+		if secs, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return record.Timespec{Secs: secs}
+		}
+	}
 	n := time.Now()
 	return record.Timespec{Secs: n.Unix(), Nanos: uint32(n.Nanosecond())}
 }

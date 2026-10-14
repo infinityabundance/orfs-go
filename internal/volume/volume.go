@@ -91,6 +91,10 @@ type Volume struct {
 type InitOptions struct {
 	SegmentSize uint64
 	Reserve     uint64
+	// UUID pins the volume identity. When nil a random v4 UUID is generated;
+	// pinning it makes the on-disk bytes reproducible (the cross-FS court uses
+	// this together with a fixed clock).
+	UUID *[16]byte
 }
 
 // Init creates a fresh volume.
@@ -105,6 +109,9 @@ func Init(backing string, opts InitOptions) (*Volume, error) {
 	uuid, err := randomUUID()
 	if err != nil {
 		return nil, err
+	}
+	if opts.UUID != nil {
+		uuid = *opts.UUID
 	}
 	g := record.Genesis{UUID: uuid, SegmentSize: opts.SegmentSize}
 	l, err := log.Create(backing, g)

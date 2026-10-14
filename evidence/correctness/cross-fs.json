@@ -1,0 +1,15 @@
+{
+  "schema": "orfs.correctness.crossfs.v1",
+  "uuid": "00112233445566778899aabbccddeeff",
+  "clock_epoch": 1700000000,
+  "segment_size": 8388608,
+  "reference_sha256": "35bd5d57e1f85525238a13f1609d2c65737b37731ec14234634f4f5e8260d990",
+  "backings_ran": 4,
+  "agreed": true,
+  "backings": [
+    {"fs": "ext4", "segment_sha256": "35bd5d57e1f85525238a13f1609d2c65737b37731ec14234634f4f5e8260d990", "agreed": true, "note": ""},
+    {"fs": "xfs", "segment_sha256": "35bd5d57e1f85525238a13f1609d2c65737b37731ec14234634f4f5e8260d990", "agreed": true, "note": ""},
+    {"fs": "btrfs", "segment_sha256": "35bd5d57e1f85525238a13f1609d2c65737b37731ec14234634f4f5e8260d990", "agreed": true, "note": ""},
+    {"fs": "tmpfs", "segment_sha256": "35bd5d57e1f85525238a13f1609d2c65737b37731ec14234634f4f5e8260d990", "agreed": true, "note": ""}
+  ]
+}
