@@ -144,7 +144,7 @@ Court: the same `scripts/baseline-court.sh`, second pass at `numjobs=64`.
 
 Measures the identical 4K random-read workload at 64 concurrent readers,
 emitting completion-latency percentiles at that concurrency. The design target is
-`p50` / `p95` / `p99` / `p99.9`; `fiosummary` currently preserves `p50`, `p99`,
+`p50` / `p95` / `p99` / `p99.9`; `fiosummary` preserves `p50`, `p95`, `p99`,
 `p99.9`, and `p99.99`.
 
 Receipt: `evidence/performance/scale.json` (schema
@@ -158,6 +158,36 @@ Receipt: `evidence/performance/scale.json` (schema
 
 OrFS reaches ~472k IOPS at 64 readers against ~11.3M for the container
 filesystem: the daemon does not scale like a native stack. Stated honestly.
+
+## 6b. Transport court (F0 vs the closest honest alternative)
+
+Court: `scripts/transport-court.sh`, run inside the court container by
+`scripts/container-transport.sh`. It also runs the FUSE INIT negotiation probe
+(`scripts/container-transport-probe.sh`, `cmd/fuseuringprobe`).
+
+F2 (FUSE-over-`io_uring`) is **not reachable from pure Go via go-fuse**: this
+kernel compiles in and runtime-enables `CONFIG_FUSE_IO_URING`, and the probe
+shows it advertising `FUSE_OVER_IO_URING` in the INIT it sends (the follow-up
+request then stops arriving on `/dev/fuse`), but `hanwen/go-fuse/v2` v2.12.0
+exposes no io_uring transport at all — it only names the capability bit. See
+[`TRANSPORT.md`](TRANSPORT.md). The court therefore compares the F0 shapes this
+build *can* serve: the default multi-reader loop against `f0-single`.
+
+Receipt: `evidence/performance/transport.json` (schema
+`orfs.performance.transport.v1`). Measured (this host, 64 MiB file, 4K random
+read, `iodepth=1`, ~8 s, `--direct-io`):
+
+| mode | numjobs | p50 | p95 | p99 | p99.9 | IOPS |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `f0` | 1 | 8,512 ns | 13,376 ns | 31,872 ns | 62,208 ns | 98,582 |
+| `f0-single` | 1 | 8,256 ns | 11,712 ns | 29,312 ns | 50,944 ns | 103,612 |
+| `f0` | 64 | 148,480 ns | 354,304 ns | 1,712,128 ns | 9,633,792 ns | 271,855 |
+| `f0-single` | 64 | 366,592 ns | 536,576 ns | 22,151,168 ns | 69,730,304 ns | 85,096 |
+
+At one reader the two are within noise; at 64 the multi-reader loop wins ~3.2× the
+IOPS and ~13× the p99. SQ/CQ counters are not obtained (no io_uring in use) and
+the receipt says so rather than inventing them; the kernel FUSE connection's
+pending-request backlog (`waiting`) is reported instead.
 
 ## 7. fsstress-equivalent court
 
@@ -275,6 +305,7 @@ Measured today (all bounded, laboratory conditions):
 | fsstress | bounded storm + POSIX extras + `verify --deep` | `evidence/performance/fsstress.json` |
 | external baseline | 4K randread p50/p99/p99.9 vs ext4/tmpfs | `evidence/performance/baseline.json` |
 | 64-thread scaling | 4K randread at 64 readers | `evidence/performance/scale.json` |
+| transport (F0 vs f0-single; F2 negotiation probe) | F2 not reachable via go-fuse; kernel supports it (probed) — F0-single costs ~3.2× IOPS and ~13× p99 at 64 readers | `evidence/performance/transport.json` |
 | scan-resistant admission | S3-FIFO 95.2% vs FIFO 88.0% vs LRU 95.2% | `evidence/performance/cache.json` |
 | capacity guard | typed `CapacityExhausted` before the first byte | `evidence/recovery/capacity.json` |
 | quarantine | torn tail moved, never truncated | `evidence/recovery/quarantine.json` |
@@ -285,7 +316,7 @@ Explicitly not yet measured (absence is deliberate, not implied):
 
 | Frontier | State |
 | --- | --- |
-| F2 FUSE-over-`io_uring` transport; the F0-vs-F2 p50/p95/p99/p99.9 publication | not wired; F0 today (`LIMITATIONS.md` §6) |
+| F2 FUSE-over-`io_uring` transport | **not reachable from pure Go via go-fuse** — the kernel supports it (probed live), the linked library does not; the measured F0 comparison is published (`TRANSPORT.md`, §6b) |
 | Multi-day amplification curve; profile selection by measured worth | not run |
 | Mount latency after a large (2^30-byte) history | not run (`OPERATIONS.md` §3) |
 | Group commit | not implemented |

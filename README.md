@@ -44,14 +44,15 @@ Working today:
 | Simulated power-loss device + crash-consistency court | implemented |
 | Frozen `legacy_v0` / `current_v1` fixtures + byte-identity court | implemented |
 | `orfs init` / `inspect` / `verify [--deep]` / `recover` / `doctor` / `mount` / `manifest` / `stat` | implemented |
-| Growth/amplification, external `fio` baseline, 64-thread scaling, fsstress, capacity/quarantine, scan-resistant admission courts | implemented — receipts under `evidence/`, honest numbers in `docs/BENCH.md` |
+| Growth/amplification, external `fio` baseline, 64-thread scaling, transport, fsstress, capacity/quarantine, scan-resistant admission courts | implemented — receipts under `evidence/`, honest numbers in `docs/BENCH.md` |
 | Cross-FS determinism (identical `or.log` bytes across ext4/xfs/btrfs/tmpfs) | implemented — `evidence/correctness/cross-fs.json` |
-| pjdfstest court | implemented — 3827/8798 passing; 4971 genuine POSIX deviations outstanding (`docs/LIMITATIONS.md` §11) |
-| F2 transport, group commit, per-read allocs court; closing the pjdfstest deviations | planned — see `docs/PROGRESS.md` |
+| pjdfstest court | implemented — **8798/8798 passing** (`docs/LIMITATIONS.md` §11) |
+| Transport (`--transport f0 \| f0-single \| fuse-uring`) with a loud F2 fallback; F2 (`io_uring`) probed live — the kernel supports it, go-fuse exposes none (see `docs/TRANSPORT.md`) | implemented — `evidence/performance/transport.json` |
 
 Honest non-claims: the **image pixel-surface pyramid is rejected, not merely
 unimplemented** (`docs/REJECTED.md`). No performance superiority is claimed; the
-external baseline courts are the follow-up (`docs/LIMITATIONS.md`).
+FUSE tax is published in `docs/BENCH.md`. A true pure-Go F2 transport, group
+commit, and a per-read allocation court remain planned (`docs/PROGRESS.md`).
 
 ## Quick start
 
@@ -76,6 +77,7 @@ receipts are in [`docs/BENCH.md`](docs/BENCH.md); reproduction in
 [`ON_DISK.md`](docs/ON_DISK.md) (byte-exact format),
 [`MIGRATION.md`](docs/MIGRATION.md) (`or.log` v0 → v1),
 [`MANIFESTATION.md`](docs/MANIFESTATION.md) (the concealed read path),
+[`TRANSPORT.md`](docs/TRANSPORT.md) (F0/F1/F2, the measured F0 comparison, and why F2 is not reachable here),
 [`OPERATIONS.md`](docs/OPERATIONS.md) (growth, recovery, capacity),
 [`SECURITY.md`](docs/SECURITY.md), [`LIMITATIONS.md`](docs/LIMITATIONS.md),
 [`REJECTED.md`](docs/REJECTED.md), [`PROGRESS.md`](docs/PROGRESS.md).
@@ -112,6 +114,7 @@ internal/capacity   the capacity guard
 internal/fsck     read-only verification
 internal/doctor   the capability probe and capacity report
 internal/fusefs   the FUSE projection
+internal/transport the F0/F1/F2 transport story: probe, negotiate, serve mode
 internal/fixture  the frozen mini-volumes for the format court
 docs/             normative specifications
 tests/fixtures/   frozen compatibility fixtures

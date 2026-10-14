@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime"
 	"syscall"
 
 	"github.com/infinityabundance/orfs-go/internal/doctor"
@@ -25,6 +26,7 @@ import (
 	"github.com/infinityabundance/orfs-go/internal/orfserr"
 	"github.com/infinityabundance/orfs-go/internal/record"
 	"github.com/infinityabundance/orfs-go/internal/segment"
+	"github.com/infinityabundance/orfs-go/internal/transport"
 	"github.com/infinityabundance/orfs-go/internal/volume"
 )
 
@@ -87,7 +89,7 @@ usage: orfs <command> [flags]
   verify <backing> [--deep] [--json]
   recover <backing> [--json]
   doctor [--capacity --backing <dir> [--reserve bytes]] [--json]
-  mount <backing> <mountpoint> [flags]
+  mount <backing> <mountpoint> [--direct-io] [--transport f0|f0-single|fuse-uring] [--readers N]
   unmount <mountpoint>
   stat <backing> [--json]
 
@@ -368,6 +370,8 @@ func cmdMount(args []string) int {
 	readOnly := fs.Bool("read-only", false, "mount read-only")
 	allowOther := fs.Bool("allow-other", false, "allow other users")
 	directIO := fs.Bool("direct-io", false, "bypass the page cache (FOPEN_DIRECT_IO)")
+	transportName := fs.String("transport", string(transport.F0), "f0 | f0-single | fuse-uring")
+	readers := fs.Int("readers", 0, "F0 reader concurrency (0 = default; go-fuse clamps to [2,16] via GOMAXPROCS)")
 	attrTTL := fs.Float64("attr-ttl-ms", 1000, "attribute cache TTL in ms")
 	entryTTL := fs.Float64("entry-ttl-ms", 1000, "entry cache TTL in ms")
 	fsName := fs.String("fsname", "", "filesystem name")
@@ -377,6 +381,24 @@ func cmdMount(args []string) int {
 	}
 	if len(pos) != 2 {
 		return fail(orfserr.Invalid("mount requires <backing> <mountpoint>"))
+	}
+	tmode, err := transport.Parse(*transportName)
+	if err != nil {
+		return fail(orfserr.Invalid("%v", err))
+	}
+	// fuse-uring (F2) is negotiated, never assumed: Plan falls back to f0 with
+	// the exact reason when the transport is not available. A loud fallback,
+	// never a silent downgrade.
+	serving, err := transport.Plan(tmode, *readers)
+	if err != nil {
+		return fail(orfserr.Invalid("%v", err))
+	}
+	if serving.Fallback {
+		fmt.Fprintf(os.Stderr, "orfs: transport %s unavailable: %s\n", tmode, serving.Reason)
+		fmt.Fprintf(os.Stderr, "orfs: falling back to %s\n", serving.Mode)
+	}
+	if serving.GOMAXPROCS > 0 {
+		runtime.GOMAXPROCS(serving.GOMAXPROCS)
 	}
 	mode := log.ReadWrite
 	if *readOnly {
@@ -392,6 +414,7 @@ func cmdMount(args []string) int {
 		AllowOther:      *allowOther,
 		ReadOnly:        *readOnly,
 		DirectIO:        *directIO,
+		SingleThreaded:  serving.SingleThreaded,
 		AttrTTLSeconds:  &attrTTLSec,
 		EntryTTLSeconds: &entryTTLSec,
 		FsName:          *fsName,
@@ -401,7 +424,7 @@ func cmdMount(args []string) int {
 		v.Close()
 		return fail(orfserr.IO(err, "mount %s", pos[1]))
 	}
-	fmt.Printf("mounted %s at %s\n", pos[0], pos[1])
+	fmt.Printf("mounted %s at %s (transport %s)\n", pos[0], pos[1], serving.Mode)
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)

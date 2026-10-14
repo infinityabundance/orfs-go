@@ -32,6 +32,10 @@ type MountOptions struct {
 	AllowOther bool
 	ReadOnly   bool
 	DirectIO   bool
+	// SingleThreaded serialises request processing in go-fuse (one request at a
+	// time). It is the f0-single serving mode: an honest, measurable point on
+	// the F0 reader-concurrency curve, not a separate transport.
+	SingleThreaded bool
 	// AttrTTLSeconds/EntryTTLSeconds set the kernel's attribute and entry cache
 	// lifetimes. A nil pointer leaves go-fuse's default; a pointer to 0 forces
 	// every path walk and getattr back through the daemon, which is what the
@@ -91,6 +95,7 @@ func (s *Server) Mount(mnt string) (*fuse.Server, error) {
 	if s.opt.AllowOther {
 		opts.MountOptions.AllowOther = true
 	}
+	opts.MountOptions.SingleThreaded = s.opt.SingleThreaded
 	// The kernel must enforce the inode's DAC for every type whose open() is never
 	// routed to the daemon: a FIFO, socket, or device node is opened by the
 	// kernel's special-file handlers, and without default_permissions FUSE's

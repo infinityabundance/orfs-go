@@ -31,7 +31,7 @@ its owning phase rather than pretending to work.
 | 21 | Named historical snapshots and index checkpoints bounding replay | planned |
 | 22 | External baseline courts (ext4/tmpfs/overlay/raw) and 64-thread scaling | planned |
 | 23 | Endurance amplification court (logical vs physical vs manifested bytes) | planned |
-| 24 | F2 (FUSE-over-`io_uring`) transport with SQ/CQ-pressure counters | planned |
+| 24 | Transport characterisation: F2 negotiation probed live (kernel supports it; go-fuse exposes none), `--transport` flag with loud fallback, measured F0-vs-f0-single court with FUSE backpressure counters | complete |
 | 25 | Cross-generation fixtures with the Rust reference (byte-for-byte) | planned |
 | 26 | Growth/amplification court (non-withdrawal) + receipts | complete |
 | 27 | External baseline court (`fio` vs ext4/tmpfs, honest FUSE tax) + 64-thread scaling | complete |
@@ -39,7 +39,7 @@ its owning phase rather than pretending to work.
 | 29 | Capacity `CapacityExhausted` + quarantine-never-truncates courts + receipts | complete |
 | 30 | Multi-arch publish workflow + tagged release | complete |
 | 31 | Scan-resistant admission court (S3-FIFO vs FIFO vs LRU) | complete |
-| 32 | F2 (FUSE-over-`io_uring`); group commit; per-read allocs court | planned |
+| 32 | A raw pure-Go F2 transport (blocked: no Go FUSE library exposes io_uring — see phase 24); group commit; per-read allocs court | planned |
 | 33 | Cross-FS determinism (identical authoritative log bytes across ext4/xfs/btrfs/tmpfs, fixed uuid + pinned clock) | complete |
 | 34 | pjdfstest court (upstream POSIX syscall suite vs the mount; deviations published, not allowlisted) | complete — 8798/8798 assertions pass, 0 deviations |
 

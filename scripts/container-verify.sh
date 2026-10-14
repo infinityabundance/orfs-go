@@ -57,6 +57,7 @@ else
       run_stage "fuse (mounted POSIX court)" sh "$(dirname "$0")/container-fuse-test.sh"
       run_stage "fsstress (bounded op storm + POSIX extras)" sh "$(dirname "$0")/container-fsstress.sh"
       run_stage "baseline (fio vs ext4/tmpfs)" sh "$(dirname "$0")/container-baseline.sh"
+      run_stage "transport court (F0 vs f0-single, 4K randread)" sh "$(dirname "$0")/container-transport.sh"
       run_stage "cross-fs determinism (identical log bytes across ext4/xfs/btrfs/tmpfs)" \
         sh "$(dirname "$0")/container-crossfs.sh"
       run_stage "pjdfstest (upstream POSIX syscall suite vs the mount)" \
@@ -65,6 +66,7 @@ else
       skip "fuse (mounted POSIX court)" "no /dev/fuse"
       skip "fsstress (bounded op storm + POSIX extras)" "no /dev/fuse"
       skip "baseline (fio vs ext4/tmpfs)" "no /dev/fuse"
+      skip "transport court (F0 vs f0-single, 4K randread)" "no /dev/fuse"
       skip "cross-fs determinism (identical log bytes across ext4/xfs/btrfs/tmpfs)" "no /dev/fuse"
       skip "pjdfstest (upstream POSIX syscall suite vs the mount)" "no /dev/fuse"
     fi
@@ -75,6 +77,7 @@ else
     skip "fuse (mounted POSIX court)" "--fast"
     skip "fsstress (bounded op storm + POSIX extras)" "--fast"
     skip "baseline (fio vs ext4/tmpfs)" "--fast"
+    skip "transport court (F0 vs f0-single, 4K randread)" "--fast"
     skip "cross-fs determinism (identical log bytes across ext4/xfs/btrfs/tmpfs)" "--fast"
     skip "pjdfstest (upstream POSIX syscall suite vs the mount)" "--fast"
   fi

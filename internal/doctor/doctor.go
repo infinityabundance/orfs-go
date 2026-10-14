@@ -19,6 +19,7 @@ import (
 	"github.com/infinityabundance/orfs-go/internal/capacity"
 	"github.com/infinityabundance/orfs-go/internal/log"
 	"github.com/infinityabundance/orfs-go/internal/segment"
+	"github.com/infinityabundance/orfs-go/internal/transport"
 )
 
 // SampleWindow is the number of trailing committed boundaries averaged for the
@@ -234,15 +235,16 @@ func unescape(s string) string {
 
 // Probe is the `doctor` capability report.
 type Probe struct {
-	FuseDevice     bool   `json:"fuse_device"`
-	FuseMountable  bool   `json:"fuse_mountable"`
-	BackingDir     string `json:"backing_dir,omitempty"`
-	FuseVersionEnv string `json:"note,omitempty"`
+	FuseDevice     bool              `json:"fuse_device"`
+	FuseMountable  bool              `json:"fuse_mountable"`
+	BackingDir     string            `json:"backing_dir,omitempty"`
+	FuseVersionEnv string            `json:"note,omitempty"`
+	Transport      transport.Support `json:"transport"`
 }
 
 // CapabilityProbe checks for FUSE availability without mutating anything.
 func CapabilityProbe() Probe {
-	p := Probe{}
+	p := Probe{Transport: transport.Probe()}
 	if _, err := os.Stat("/dev/fuse"); err == nil {
 		p.FuseDevice = true
 	}
@@ -264,6 +266,18 @@ func (p Probe) Text() string {
 	if p.FuseVersionEnv != "" {
 		fmt.Fprintf(&b, "note:                %s\n", p.FuseVersionEnv)
 	}
+	t := p.Transport
+	fmt.Fprintf(&b, "io_uring transport:  %v\n", t.Available)
+	if t.KernelRelease != "" {
+		fmt.Fprintf(&b, "kernel release:      %s\n", t.KernelRelease)
+	}
+	fmt.Fprintf(&b, "kernel io_uring:     compiled=%v enabled=%v", t.KernelCompiled, t.KernelEnabled)
+	if t.KernelParamVal != "" {
+		fmt.Fprintf(&b, " (%s)", t.KernelParamVal)
+	}
+	b.WriteByte('\n')
+	fmt.Fprintf(&b, "library transport:   %s %s exposes=%v\n", t.Library, t.LibraryVersion, t.LibraryExposes)
+	fmt.Fprintf(&b, "reason:              %s\n", t.Reason)
 	return b.String()
 }
 

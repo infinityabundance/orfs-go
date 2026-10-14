@@ -107,7 +107,9 @@ Court: `internal/manifest/planner_test.go`; mounted round trip:
 
 ## 8. Transport and lifecycle
 
-`orfs mount` installs the seam with the authoritative oracle wired in.
+`orfs mount` installs the seam with the authoritative oracle wired in. It serves
+the F0 (`/dev/fuse`) transport; the transport story — including why the reference's
+F2 is not reachable here — is in [`TRANSPORT.md`](TRANSPORT.md).
 `orfs verify --deep` validates the authoritative log regardless of Plane C; the
 manifested plane is derived and deleting `.or_bloom/` changes nothing
 recoverable (Law I).

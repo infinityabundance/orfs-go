@@ -33,7 +33,9 @@ RUN apt-get update \
 COPY . .
 RUN CGO_ENABLED=0 go build -o /out/orfs ./cmd/orfs \
  && CGO_ENABLED=0 go build -o /out/fiosummary ./cmd/fiosummary \
- && CGO_ENABLED=0 go build -o /out/orfsstress ./cmd/orfsstress
+ && CGO_ENABLED=0 go build -o /out/orfsstress ./cmd/orfsstress \
+ && CGO_ENABLED=0 go build -o /out/transportsummary ./cmd/transportsummary \
+ && CGO_ENABLED=0 go build -o /out/fuseuringprobe ./cmd/fuseuringprobe
 
 # Build the upstream pjdfstest suite into the image so the pjdfstest court can
 # run it without cloning at court time. gcc ships in the Go base image; the

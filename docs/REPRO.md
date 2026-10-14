@@ -81,6 +81,8 @@ courts do not need `/dev/fuse`.
 | micro-benchmarks | `sh scripts/container-bench.sh` | `evidence/performance/bench.txt` |
 | external baseline (single job) | `sh scripts/container-baseline.sh` | `evidence/performance/baseline.json` |
 | 64-thread scaling | `sh scripts/container-baseline.sh` | `evidence/performance/scale.json` |
+| transport probe (FUSE-over-io_uring negotiation) | `sh scripts/container-transport-probe.sh` | none (probe JSON on stdout) |
+| transport court (F0 vs f0-single, 4K randread + FUSE backpressure) | `sh scripts/container-transport.sh` | `evidence/performance/transport.json` |
 | fsstress-equivalent + POSIX extras | `sh scripts/container-fsstress.sh` | `evidence/performance/fsstress.json` |
 | mounted POSIX court | `sh scripts/container-fuse-test.sh` | none (PASS/FAIL) |
 | recovery: capacity / quarantine | `sh scripts/container-go-courts.sh` | `evidence/recovery/capacity.json`, `evidence/recovery/quarantine.json` |

@@ -12,8 +12,9 @@ against ~11.3M native. The only measured *win* is the concealed read planner's
 p50 (~2x on a warm manifested body), with p99 explicitly not claimed. Cross-FS
 determinism is now measured and holds: identical authoritative log bytes across
 ext4/xfs/btrfs/tmpfs (§11). Several
-courts remain unrun and are named as such in `docs/BENCH.md` §8 (F2, a multi-day
-amplification curve, group commit). No number that a
+courts remain unrun and are named as such in `docs/BENCH.md` §8 (a multi-day
+amplification curve, group commit); the transport court now runs, and F2 is
+named unreachable rather than deferred (`docs/TRANSPORT.md`). No number that a
 court did not measure is published.
 
 ## 2. Mount latency is `Θ(retained history)`
@@ -62,17 +63,25 @@ worse) and is **not** claimed as an improvement. The default root-profile body
 transforms ~1.00× the logical bytes (it is essentially a full history); profiles
 that spend more space for more speed are the follow-up.
 
-What remains: an external baseline court, a multi-day amplification curve,
-profile selection (choosing a body by measured worth), and F2. No manifested
+What remains: a multi-day amplification curve, profile selection (choosing a body
+by measured worth), and the raw pure-Go transport F2 would require. No manifested
 superiority beyond the p50 figure is claimed. `docs/REJECTED.md` records the one
 deliberately-rejected candidate (the image pixel-surface pyramid).
 
-## 6. F2 (FUSE-over-`io_uring`) is not wired
+## 6. F2 (FUSE-over-`io_uring`) is not reachable from this build
 
-The transport today is F0: `/dev/fuse` with synchronous backing I/O. The
-queue-affine F2 transport, its SQ/CQ-pressure counters, and the honest
-F0-vs-F2 p50/p95/p99/p99.9 publication are a tracked follow-up. No transport
-superiority is claimed.
+The transport today is F0: `/dev/fuse` with synchronous backing I/O, served by
+`hanwen/go-fuse/v2` v2.12.0. That library exposes **no** FUSE-over-`io_uring`
+transport — only the name of the capability bit (`fuse/types.go:325`,
+`fuse/print.go:58`); its transport is a `read(2)`/`writev(2)` loop. The kernel on
+this host *does* support F2 (`CONFIG_FUSE_IO_URING=y`, `enable_uring=Y`, and the
+negotiation probe shows it advertising `FUSE_OVER_IO_URING`), but it is
+unreachable from pure Go through go-fuse, and a from-scratch io_uring transport
+would mean reimplementing the FUSE server (out of scope). `orfs mount
+--transport fuse-uring` therefore reports the exact reason and falls back to F0,
+loudly, never silently. The measured F0 comparison (multi-reader vs single-loop)
+is published: `evidence/performance/transport.json` and
+[`TRANSPORT.md`](TRANSPORT.md). No transport superiority is claimed.
 
 ## 7. Logical deletion is not secure erasure
 

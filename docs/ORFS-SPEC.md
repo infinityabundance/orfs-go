@@ -115,8 +115,10 @@ None in the committed format. The Go port additionally:
 - consumes EKBLOOM as a pure-Go module rather than the Rust crate, and wires it
   as a **live** manifested read path (Plane C) with exact-identity certification
   and an authoritative fallback (`docs/MANIFESTATION.md`);
-- implements the F2 (FUSE-over-`io_uring`) transport as a tracked follow-up
-  (see `docs/PROGRESS.md`), serving F0 today;
+- probes the F2 (FUSE-over-`io_uring`) transport live but does not serve it:
+  this host's kernel supports it, the linked Go FUSE library exposes none, so the
+  port serves F0 and reports the exact reason it cannot serve F2
+  (`docs/TRANSPORT.md`, `docs/LIMITATIONS.md` §6);
 - uses no `unsafe` and no CGO.
 
 ## 8. Package map

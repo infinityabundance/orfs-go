@@ -1,0 +1,127 @@
+{
+  "schema": "orfs.performance.transport.v1",
+  "note": "honest F0-vs-alternative transport comparison; a transport that is not available is named, never faked",
+  "probe": {
+    "schema": "orfs.transport.probe.v1",
+    "support": {
+      "kernel_release": "7.2.9-2-cachyos",
+      "kernel_compiled_in": true,
+      "kernel_enabled": true,
+      "kernel_param_path": "/sys/module/fuse/parameters/enable_uring",
+      "kernel_param_value": "Y",
+      "library": "github.com/hanwen/go-fuse/v2",
+      "library_version": "v2.12.0",
+      "library_exposes_transport": false,
+      "available": false,
+      "reason": "the linked FUSE library (github.com/hanwen/go-fuse/v2 v2.12.0) exposes no FUSE-over-io_uring transport: it only names the capability bit (fuse/types.go:325 CAP_OVER_IO_URING, printed at fuse/print.go:58) and serves through a read(2)/writev(2) loop on /dev/fuse"
+    },
+    "negotiation": {
+      "kernel_release": "7.2.9-2-cachyos",
+      "mounted": true,
+      "kernel_major": 7,
+      "kernel_minor": 45,
+      "kernel_flags": 262144,
+      "kernel_flags2": 1946157051,
+      "kernel_advertises_io_uring": true,
+      "control_request_on_dev_fuse": true,
+      "uring_reply_request_on_dev_fuse": false,
+      "note": "control = INIT replied without FUSE_OVER_IO_URING; test = INIT replied with FUSE_OVER_IO_URING. A request ceasing to arrive on /dev/fuse is the observational signature of an io_uring connection; it is evidence, not a completed io_uring REGISTER (this build performs no unsafe pointer syscalls)."
+    }
+  },
+  "arms": [
+    {
+      "mode": "f0",
+      "numjobs": 1,
+      "job": "randread",
+      "iops": 98582.302212,
+      "bw_kib_per_s": 394329,
+      "clat_mean_ns": 9846.445919,
+      "p50_ns": 8512,
+      "p95_ns": 13376,
+      "p99_ns": 31872,
+      "p99_9_ns": 62208,
+      "p99_99_ns": 110080
+    },
+    {
+      "mode": "f0",
+      "numjobs": 64,
+      "job": "randread",
+      "iops": 271854.772302,
+      "bw_kib_per_s": 1087419,
+      "clat_mean_ns": 234698.021079,
+      "p50_ns": 148480,
+      "p95_ns": 354304,
+      "p99_ns": 1712128,
+      "p99_9_ns": 9633792,
+      "p99_99_ns": 21889024
+    },
+    {
+      "mode": "f0-single",
+      "numjobs": 1,
+      "job": "randread",
+      "iops": 103611.673541,
+      "bw_kib_per_s": 414446,
+      "clat_mean_ns": 9414.903037,
+      "p50_ns": 8256,
+      "p95_ns": 11712,
+      "p99_ns": 29312,
+      "p99_9_ns": 50944,
+      "p99_99_ns": 220160
+    },
+    {
+      "mode": "f0-single",
+      "numjobs": 64,
+      "job": "randread",
+      "iops": 85096.463826,
+      "bw_kib_per_s": 340385,
+      "clat_mean_ns": 751335.824684,
+      "p50_ns": 366592,
+      "p95_ns": 536576,
+      "p99_ns": 22151168,
+      "p99_9_ns": 69730304,
+      "p99_99_ns": 86507520
+    }
+  ],
+  "counters": [
+    {
+      "mode": "f0",
+      "numjobs": 1,
+      "max_background": 12,
+      "congestion_threshold": 9,
+      "waiting_max": 1,
+      "waiting_mean": 0.8,
+      "samples": 90
+    },
+    {
+      "mode": "f0",
+      "numjobs": 64,
+      "max_background": 12,
+      "congestion_threshold": 9,
+      "waiting_max": 64,
+      "waiting_mean": 50.778,
+      "samples": 99
+    },
+    {
+      "mode": "f0-single",
+      "numjobs": 1,
+      "max_background": 12,
+      "congestion_threshold": 9,
+      "waiting_max": 1,
+      "waiting_mean": 0.707,
+      "samples": 99
+    },
+    {
+      "mode": "f0-single",
+      "numjobs": 64,
+      "max_background": 12,
+      "congestion_threshold": 9,
+      "waiting_max": 64,
+      "waiting_mean": 51.02,
+      "samples": 99
+    }
+  ],
+  "notes": [
+    "SQ/CQ counters were not obtained: the FUSE-over-io_uring transport is not in use in this build (see probe).",
+    "kernel backpressure signals come from /sys/fs/fuse/connections/\u003cid\u003e/{max_background,congestion_threshold,waiting}."
+  ]
+}

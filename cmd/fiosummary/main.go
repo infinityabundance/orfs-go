@@ -13,81 +13,15 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	"github.com/infinityabundance/orfs-go/internal/fiojson"
 )
-
-type fioReport struct {
-	Jobs []struct {
-		JobName string `json:"jobname"`
-		Read    fioDir `json:"read"`
-		Write   fioDir `json:"write"`
-	} `json:"jobs"`
-}
-
-type fioDir struct {
-	IOPS float64 `json:"iops"`
-	BW   float64 `json:"bw"`
-	CLat struct {
-		Mean       float64            `json:"mean"`
-		Percentile map[string]float64 `json:"percentile"`
-	} `json:"clat_ns"`
-}
-
-// Summary is the compact receipt for one job.
-type Summary struct {
-	Job      string  `json:"job"`
-	IOPS     float64 `json:"iops"`
-	BWKiBps  float64 `json:"bw_kib_per_s"`
-	ClatMean float64 `json:"clat_mean_ns"`
-	P50      float64 `json:"p50_ns"`
-	P99      float64 `json:"p99_ns"`
-	P999     float64 `json:"p99_9_ns"`
-	P9999    float64 `json:"p99_99_ns"`
-}
 
 // Receipt labels each target's summaries.
 type Receipt struct {
-	Schema  string               `json:"schema"`
-	Note    string               `json:"note"`
-	Targets map[string][]Summary `json:"targets"`
-}
-
-func pick(m map[string]float64, keys ...string) float64 {
-	for _, k := range keys {
-		if v, ok := m[k]; ok {
-			return v
-		}
-	}
-	return 0
-}
-
-func summarize(path string) ([]Summary, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var rep fioReport
-	if err := json.Unmarshal(raw, &rep); err != nil {
-		return nil, err
-	}
-	out := make([]Summary, 0, len(rep.Jobs))
-	for _, j := range rep.Jobs {
-		d := j.Read
-		if d.IOPS == 0 {
-			d = j.Write
-		}
-		cl := d.CLat.Percentile
-		out = append(out, Summary{
-			Job:      j.JobName,
-			IOPS:     d.IOPS,
-			BWKiBps:  d.BW,
-			ClatMean: d.CLat.Mean,
-			P50:      pick(cl, "50.000000", "50.000000000"),
-			P99:      pick(cl, "99.000000", "99.000000000"),
-			P999:     pick(cl, "99.900000", "99.900000000"),
-			P9999:    pick(cl, "99.990000", "99.990000000"),
-		})
-	}
-	return out, nil
+	Schema  string                       `json:"schema"`
+	Note    string                       `json:"note"`
+	Targets map[string][]fiojson.Summary `json:"targets"`
 }
 
 func main() {
@@ -99,16 +33,14 @@ func main() {
 		fmt.Fprintln(os.Stderr, "usage: fiosummary [-schema S] [-o out.json] label=path ...")
 		os.Exit(2)
 	}
-	rec := Receipt{Schema: *schema, Note: "honest external comparison; a FUSE tax is expected and is not hidden", Targets: map[string][]Summary{}}
+	rec := Receipt{Schema: *schema, Note: "honest external comparison; a FUSE tax is expected and is not hidden", Targets: map[string][]fiojson.Summary{}}
 	for _, arg := range flag.Args() {
-		label, path := "default", arg
-		for i := 0; i < len(arg); i++ {
-			if arg[i] == '=' {
-				label, path = arg[:i], arg[i+1:]
-				break
-			}
+		label, path, ok := fiojson.SplitLabel(arg)
+		if !ok {
+			fmt.Fprintf(os.Stderr, "fiosummary: %s: want label=path\n", arg)
+			os.Exit(2)
 		}
-		sums, err := summarize(path)
+		sums, err := fiojson.Summarize(path)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "fiosummary: %s: %v\n", label, err)
 			os.Exit(1)
