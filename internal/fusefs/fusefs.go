@@ -33,9 +33,14 @@ type MountOptions struct {
 	ReadOnly           bool
 	DefaultPermissions bool
 	DirectIO           bool
-	AttrTTLSeconds     float64
-	EntryTTLSeconds    float64
-	FsName             string
+	// AttrTTLSeconds/EntryTTLSeconds set the kernel's attribute and entry cache
+	// lifetimes. A nil pointer leaves go-fuse's default; a pointer to 0 forces
+	// every path walk and getattr back through the daemon, which is what the
+	// POSIX conformance court relies on so a cached dentry cannot satisfy a walk
+	// and skip the daemon's search-permission re-check.
+	AttrTTLSeconds  *float64
+	EntryTTLSeconds *float64
+	FsName          string
 }
 
 // Server serves a volume over FUSE.
@@ -68,6 +73,9 @@ func New(v *volume.Volume, opt MountOptions) *Server {
 func (s *Server) Mount(mnt string) (*fuse.Server, error) {
 	root := &node{id: record.RootInode, s: s}
 	opts := &fs.Options{}
+	// A file legitimately created with mode 0000 must report 0000, not the
+	// package's 0644 (0755 for a directory) placeholder (pjdfstest open/26.t).
+	opts.NullPermissions = true
 	opts.MountOptions = fuse.MountOptions{
 		Name:    "orfs",
 		FsName:  s.opt.FsName,
@@ -87,12 +95,12 @@ func (s *Server) Mount(mnt string) (*fuse.Server, error) {
 	if s.opt.DefaultPermissions {
 		opts.MountOptions.Options = append(opts.MountOptions.Options, "default_permissions")
 	}
-	if s.opt.AttrTTLSeconds > 0 {
-		d := seconds(s.opt.AttrTTLSeconds)
+	if s.opt.AttrTTLSeconds != nil {
+		d := seconds(*s.opt.AttrTTLSeconds)
 		opts.AttrTimeout = &d
 	}
-	if s.opt.EntryTTLSeconds > 0 {
-		d := seconds(s.opt.EntryTTLSeconds)
+	if s.opt.EntryTTLSeconds != nil {
+		d := seconds(*s.opt.EntryTTLSeconds)
 		opts.EntryTimeout = &d
 	}
 	return fs.Mount(mnt, root, opts)
@@ -109,6 +117,7 @@ var _ = (fs.NodeLookuper)((*node)(nil))
 var _ = (fs.NodeGetattrer)((*node)(nil))
 var _ = (fs.NodeSetattrer)((*node)(nil))
 var _ = (fs.NodeReaddirer)((*node)(nil))
+var _ = (fs.NodeOpendirer)((*node)(nil))
 var _ = (fs.NodeReader)((*node)(nil))
 var _ = (fs.NodeWriter)((*node)(nil))
 var _ = (fs.NodeOpener)((*node)(nil))
@@ -215,8 +224,9 @@ func (n *node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 	}
 	child := n.NewInode(ctx, &node{id: in.ID, s: n.s}, stableAttr(in))
 	fillAttr(&out.Attr, in)
-	out.SetEntryTimeout(seconds(1))
-	out.SetAttrTimeout(seconds(1))
+	// The bridge applies the configured entry/attr timeouts when these are left
+	// at zero; hardcoding one here would defeat --entry-ttl-ms 0 and let a cached
+	// dentry satisfy a walk without the daemon's search-permission re-check.
 	return child, 0
 }
 
@@ -226,8 +236,16 @@ func (n *node) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) 
 		return errno(err)
 	}
 	fillAttr(&out.Attr, in)
-	out.SetTimeout(seconds(1))
 	return 0
+}
+
+// fileHandle records the open flags so a received FSETATTR can tell whether it
+// arrived through an already-open writable descriptor (Linux ftruncate never
+// re-checks the inode's write permission).
+type fileHandle struct{ flags uint32 }
+
+func (h *fileHandle) writable() bool {
+	return h != nil && h.flags&uint32(syscall.O_ACCMODE) != uint32(syscall.O_RDONLY)
 }
 
 func (n *node) Setattr(ctx context.Context, f fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
@@ -235,6 +253,12 @@ func (n *node) Setattr(ctx context.Context, f fs.FileHandle, in *fuse.SetAttrIn,
 	req := namespace.SetattrRequest{}
 	if v, ok := in.GetMode(); ok {
 		req.Mode = &v
+		// The kernel clears S_ISUID/S_ISGID itself when it does not delegate
+		// killpriv to the filesystem; that mode change is the kernel's decision
+		// and is applied without a fresh ownership check.
+		if in.Valid&fuse.FATTR_KILL_SUIDGID != 0 {
+			req.KernelMode = true
+		}
 	}
 	if v, ok := in.GetUID(); ok {
 		req.UID = &v
@@ -242,16 +266,29 @@ func (n *node) Setattr(ctx context.Context, f fs.FileHandle, in *fuse.SetAttrIn,
 	if v, ok := in.GetGID(); ok {
 		req.GID = &v
 	}
-	if v, ok := in.GetATime(); ok {
-		ts := record.Timespec{Secs: v.Unix(), Nanos: uint32(v.Nanosecond())}
-		req.Atime = &ts
+	if in.Valid&fuse.FATTR_ATIME != 0 {
+		if in.Valid&fuse.FATTR_ATIME_NOW != 0 {
+			req.AtimeNow = true
+		} else if v, ok := in.GetATime(); ok {
+			ts := record.Timespec{Secs: v.Unix(), Nanos: uint32(v.Nanosecond())}
+			req.Atime = &ts
+		}
 	}
-	if v, ok := in.GetMTime(); ok {
-		ts := record.Timespec{Secs: v.Unix(), Nanos: uint32(v.Nanosecond())}
-		req.Mtime = &ts
+	if in.Valid&fuse.FATTR_MTIME != 0 {
+		if in.Valid&fuse.FATTR_MTIME_NOW != 0 {
+			req.MtimeNow = true
+		} else if v, ok := in.GetMTime(); ok {
+			ts := record.Timespec{Secs: v.Unix(), Nanos: uint32(v.Nanosecond())}
+			req.Mtime = &ts
+		}
 	}
 	if v, ok := in.GetSize(); ok {
 		req.Size = &v
+	}
+	if _, ok := in.GetFh(); ok {
+		if h, ok := f.(*fileHandle); ok {
+			req.WritableHandle = h.writable()
+		}
 	}
 	if err := n.s.ns.Setattr(cred, n.id, req); err != nil {
 		return errno(err)
@@ -277,17 +314,47 @@ func (n *node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 	return fs.NewListDirStream(list), 0
 }
 
+// Opendir enforces the read permission a directory iteration requires, so an
+// opendir(2)/readdir(2) of a directory without read permission is EACCES
+// (POSIX). The kernel routes directory opens to OPENDIR, not OPEN.
+func (n *node) Opendir(ctx context.Context) syscall.Errno {
+	in, err := n.s.ns.Getattr(n.id)
+	if err != nil {
+		return errno(err)
+	}
+	if !namespace.HasPermission(credOf(ctx), in, 0o4) {
+		return syscall.EACCES
+	}
+	return 0
+}
+
 func (n *node) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
-	// Read/write permission is enforced per-operation from the credential. We do
-	// not set FOPEN_KEEP_CACHE: a short attribute/entry TTL already bounds reuse,
-	// and a cached page could otherwise outlive a concurrent overwrite. When
-	// requested, FOPEN_DIRECT_IO bypasses the page cache so a benchmark reads the
-	// daemon, not the cache.
+	// POSIX open(2) checks the requested access mode against the inode before
+	// handing back a descriptor, so a read-only open of a file without read
+	// permission is EACCES here, not at the first read.
+	mask := uint32(0o4)
+	switch flags & uint32(syscall.O_ACCMODE) {
+	case uint32(syscall.O_WRONLY):
+		mask = 0o2
+	case uint32(syscall.O_RDWR):
+		mask = 0o6
+	}
+	in, err := n.s.ns.Getattr(n.id)
+	if err != nil {
+		return nil, 0, errno(err)
+	}
+	if !namespace.HasPermission(credOf(ctx), in, mask) {
+		return nil, 0, syscall.EACCES
+	}
+	// We do not set FOPEN_KEEP_CACHE: a short attribute/entry TTL already bounds
+	// reuse, and a cached page could otherwise outlive a concurrent overwrite.
+	// When requested, FOPEN_DIRECT_IO bypasses the page cache so a benchmark
+	// reads the daemon, not the cache.
 	var fuseFlags uint32
 	if n.s.opt.DirectIO {
 		fuseFlags |= fuse.FOPEN_DIRECT_IO
 	}
-	return nil, fuseFlags, 0
+	return &fileHandle{flags: flags}, fuseFlags, 0
 }
 
 func (n *node) Read(ctx context.Context, f fs.FileHandle, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
@@ -315,7 +382,7 @@ func (n *node) Create(ctx context.Context, name string, flags, mode uint32, out 
 	}
 	fillAttr(&out.Attr, in)
 	child := n.NewInode(ctx, &node{id: in.ID, s: n.s}, stableAttr(in))
-	return child, nil, 0, 0
+	return child, &fileHandle{flags: flags}, 0, 0
 }
 
 func (n *node) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {

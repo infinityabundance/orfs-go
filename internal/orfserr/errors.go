@@ -59,6 +59,15 @@ const (
 	KindIsDir
 	KindNotEmpty
 	KindInvalid
+	// KindNameTooLong is a path component longer than NAME_MAX (ENAMETOOLONG),
+	// distinct from a generic invalid argument.
+	KindNameTooLong
+	// KindAccess is a denial by the permission-bit model (the owner/group/other
+	// class check), which POSIX surfaces as EACCES.
+	KindAccess
+	// KindPermission is a denial for a reason other than the permission bits
+	// (ownership, the sticky-directory rule, hard-linking a directory, the
+	// chgrp policy), which the kernel surfaces as EPERM.
 	KindPermission
 	KindNotSupported
 
@@ -148,8 +157,12 @@ func (k Kind) String() string {
 		return "directory not empty"
 	case KindInvalid:
 		return "invalid argument"
+	case KindNameTooLong:
+		return "file name too long"
+	case KindAccess:
+		return "access denied"
 	case KindPermission:
-		return "permission denied"
+		return "operation not permitted"
 	case KindNotSupported:
 		return "operation not supported"
 	case KindUnimplemented:
@@ -186,6 +199,10 @@ func (e *Error) Errno() syscall.Errno {
 		return syscall.ENOTEMPTY
 	case KindInvalid:
 		return syscall.EINVAL
+	case KindNameTooLong:
+		return syscall.ENAMETOOLONG
+	case KindAccess:
+		return syscall.EACCES
 	case KindPermission:
 		return syscall.EPERM
 	case KindNotSupported:
@@ -238,6 +255,18 @@ func NotEmpty(format string, a ...any) *Error {
 	return &Error{Kind: KindNotEmpty, Msg: fmt.Sprintf(format, a...)}
 }
 
+// NameTooLong builds the POSIX ENAMETOOLONG refusal for an over-long component.
+func NameTooLong(format string, a ...any) *Error {
+	return &Error{Kind: KindNameTooLong, Msg: fmt.Sprintf(format, a...)}
+}
+
+// Access builds the EACCES refusal of the permission-bit model.
+func Access(format string, a ...any) *Error {
+	return &Error{Kind: KindAccess, Msg: fmt.Sprintf(format, a...)}
+}
+
+// Permission builds the EPERM refusal for a denial that is not a
+// permission-bit class check (ownership, sticky rule, chgrp policy).
 func Permission(format string, a ...any) *Error {
 	return &Error{Kind: KindPermission, Msg: fmt.Sprintf(format, a...)}
 }
@@ -325,6 +354,8 @@ var (
 	ErrIsDir         = &Error{Kind: KindIsDir}
 	ErrNotEmpty      = &Error{Kind: KindNotEmpty}
 	ErrInvalid       = &Error{Kind: KindInvalid}
+	ErrNameTooLong   = &Error{Kind: KindNameTooLong}
+	ErrAccess        = &Error{Kind: KindAccess}
 	ErrPermission    = &Error{Kind: KindPermission}
 	ErrNotSupported  = &Error{Kind: KindNotSupported}
 	ErrUnimplemented = &Error{Kind: KindUnimplemented}

@@ -85,7 +85,7 @@ func (ns *Namespace) dir(cred Credential, id uint64, wantWrite bool) (*index.Ino
 		mask |= 0o2
 	}
 	if !HasPermission(cred, in, mask) {
-		return nil, orfserr.Permission("search permission denied on inode %d", id)
+		return nil, orfserr.Access("search permission denied on inode %d", id)
 	}
 	return in, nil
 }
@@ -106,10 +106,24 @@ func (ns *Namespace) Getattr(id uint64) (*index.Inode, error) {
 	return ns.getattr(id)
 }
 
+// checkNameLen rejects a path component longer than NAME_MAX with the
+// POSIX-correct ENAMETOOLONG. The kernel splits paths and never passes "."/".."
+// to a name-resolving operation, so the other structural rules are already
+// guaranteed here (they remain enforced on the committed bytes by record).
+func checkNameLen(name string) error {
+	if len(name) > record.NameMax {
+		return orfserr.NameTooLong("name length %d exceeds %d", len(name), record.NameMax)
+	}
+	return nil
+}
+
 // Lookup resolves a name within a directory.
 func (ns *Namespace) Lookup(cred Credential, parent uint64, name string) (*index.Inode, error) {
 	ns.mu.RLock()
 	defer ns.mu.RUnlock()
+	if err := checkNameLen(name); err != nil {
+		return nil, err
+	}
 	if _, err := ns.dir(cred, parent, false); err != nil {
 		return nil, err
 	}
@@ -181,7 +195,7 @@ func (ns *Namespace) Read(cred Credential, id, offset, size uint64) ([]byte, err
 	}
 	if !HasPermission(cred, in, 0o4) {
 		ns.mu.RUnlock()
-		return nil, orfserr.Permission("read permission denied on inode %d", id)
+		return nil, orfserr.Access("read permission denied on inode %d", id)
 	}
 	if in.Kind != record.KindFile {
 		ns.mu.RUnlock()
@@ -210,7 +224,7 @@ func (ns *Namespace) ReadAuthoritative(cred Credential, id, offset, size uint64)
 		return nil, err
 	}
 	if !HasPermission(cred, in, 0o4) {
-		return nil, orfserr.Permission("read permission denied on inode %d", id)
+		return nil, orfserr.Access("read permission denied on inode %d", id)
 	}
 	return ns.readUnchecked(in, offset, size)
 }
@@ -257,7 +271,7 @@ func (ns *Namespace) ReadAll(cred Credential, id uint64) ([]byte, error) {
 		return nil, err
 	}
 	if !HasPermission(cred, in, 0o4) {
-		return nil, orfserr.Permission("read permission denied on inode %d", id)
+		return nil, orfserr.Access("read permission denied on inode %d", id)
 	}
 	return ns.readUnchecked(in, 0, in.Size)
 }
@@ -285,7 +299,7 @@ func (ns *Namespace) Listxattr(cred Credential, id uint64) ([]string, error) {
 		return nil, err
 	}
 	if !HasPermission(cred, in, 0o4) {
-		return nil, orfserr.Permission("read permission denied on inode %d", id)
+		return nil, orfserr.Access("read permission denied on inode %d", id)
 	}
 	names := make([]string, 0, len(in.Xattrs))
 	for name := range in.Xattrs {

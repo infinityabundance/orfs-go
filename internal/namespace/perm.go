@@ -47,3 +47,18 @@ func permClassGroups(cred Credential, in *index.Inode) uint {
 func IsOwner(cred Credential, in *index.Inode) bool {
 	return cred.UID == 0 || cred.UID == in.UID
 }
+
+// inGroup reports whether g is the caller's effective group or a supplementary
+// group (the kernel's in_group_p rule, with the effective group and whatever
+// /proc/<pid>/status lists).
+func inGroup(cred Credential, g uint32) bool {
+	if cred.GID == g {
+		return true
+	}
+	for _, sup := range cred.Groups {
+		if sup == g {
+			return true
+		}
+	}
+	return false
+}

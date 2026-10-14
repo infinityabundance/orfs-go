@@ -387,13 +387,15 @@ func cmdMount(args []string) int {
 	if err != nil {
 		return fail(err)
 	}
+	attrTTLSec := *attrTTL / 1000.0
+	entryTTLSec := *entryTTL / 1000.0
 	srv := fusefs.New(v, fusefs.MountOptions{
 		AllowOther:         *allowOther,
 		ReadOnly:           *readOnly,
 		DefaultPermissions: *defaultPerms,
 		DirectIO:           *directIO,
-		AttrTTLSeconds:     *attrTTL / 1000.0,
-		EntryTTLSeconds:    *entryTTL / 1000.0,
+		AttrTTLSeconds:     &attrTTLSec,
+		EntryTTLSeconds:    &entryTTLSec,
 		FsName:             *fsName,
 	})
 	server, err := srv.Mount(pos[1])

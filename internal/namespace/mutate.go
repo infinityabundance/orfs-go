@@ -10,6 +10,9 @@ import (
 func (ns *Namespace) Create(cred Credential, parent uint64, name string, mode, uid, gid uint32) (*index.Inode, error) {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
+	if err := checkNameLen(name); err != nil {
+		return nil, err
+	}
 	if _, err := ns.dir(cred, parent, true); err != nil {
 		return nil, err
 	}
@@ -42,6 +45,9 @@ func (ns *Namespace) Create(cred Credential, parent uint64, name string, mode, u
 func (ns *Namespace) Mkdir(cred Credential, parent uint64, name string, mode, uid, gid uint32) (*index.Inode, error) {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
+	if err := checkNameLen(name); err != nil {
+		return nil, err
+	}
 	p, err := ns.dir(cred, parent, true)
 	if err != nil {
 		return nil, err
@@ -78,6 +84,9 @@ func (ns *Namespace) Mkdir(cred Credential, parent uint64, name string, mode, ui
 func (ns *Namespace) Symlink(cred Credential, parent uint64, name string, target string, uid, gid uint32) (*index.Inode, error) {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
+	if err := checkNameLen(name); err != nil {
+		return nil, err
+	}
 	if _, err := ns.dir(cred, parent, true); err != nil {
 		return nil, err
 	}
@@ -85,7 +94,7 @@ func (ns *Namespace) Symlink(cred Credential, parent uint64, name string, target
 		return nil, err
 	}
 	if len(target) == 0 || len(target) > record.SymlinkTargetMax {
-		return nil, orfserr.Invalid("symlink target length %d out of range", len(target))
+		return nil, orfserr.NameTooLong("symlink target length %d out of range", len(target))
 	}
 	if _, ok := ns.idx().Lookup(parent, name); ok {
 		return nil, orfserr.Exists("entry %q already exists in %d", name, parent)
@@ -119,13 +128,20 @@ func (ns *Namespace) Write(cred Credential, id, offset uint64, data []byte) (uin
 		return 0, orfserr.IsDir("inode %d is a directory", id)
 	}
 	if !HasPermission(cred, in, 0o2) {
-		return 0, orfserr.Permission("write permission denied on inode %d", id)
+		return 0, orfserr.Access("write permission denied on inode %d", id)
 	}
 	if len(data) == 0 {
 		return in.Size, nil
 	}
 	de := record.DataExtent{Offset: offset, Data: data}.Encode()
-	if _, err := ns.vol.Publish([]*record.Record{mkRec(record.TypeDataExtent, id, de)}); err != nil {
+	tm := ns.now()
+	// A write is a content mutation: it advances the file's mtime and ctime in
+	// the same authoritative transaction (docs/FUSE-SEMANTICS.md §5.1).
+	recs := []*record.Record{
+		mkRec(record.TypeDataExtent, id, de),
+		mkRec(record.TypeInodeSetattr, 0, record.InodeSetattr{InodeID: id, Mtime: &tm}.Encode()),
+	}
+	if _, err := ns.vol.Publish(recs); err != nil {
 		return 0, err
 	}
 	in2, _ := ns.idx().Inode(id)
@@ -145,10 +161,16 @@ func (ns *Namespace) Truncate(cred Credential, id, size uint64) error {
 		return orfserr.IsDir("inode %d is a directory", id)
 	}
 	if !HasPermission(cred, in, 0o2) {
-		return orfserr.Permission("write permission denied on inode %d", id)
+		return orfserr.Access("write permission denied on inode %d", id)
 	}
 	fr := record.FileResize{NewSize: size}.Encode()
-	_, err = ns.vol.Publish([]*record.Record{mkRec(record.TypeFileResize, id, fr)})
+	tm := ns.now()
+	// A truncate is a content mutation: it advances mtime and ctime (POSIX).
+	recs := []*record.Record{
+		mkRec(record.TypeFileResize, id, fr),
+		mkRec(record.TypeInodeSetattr, 0, record.InodeSetattr{InodeID: id, Mtime: &tm}.Encode()),
+	}
+	_, err = ns.vol.Publish(recs)
 	return err
 }
 
@@ -156,6 +178,9 @@ func (ns *Namespace) Truncate(cred Credential, id, size uint64) error {
 func (ns *Namespace) Unlink(cred Credential, parent uint64, name string) error {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
+	if err := checkNameLen(name); err != nil {
+		return err
+	}
 	p, err := ns.dir(cred, parent, true)
 	if err != nil {
 		return err
@@ -189,6 +214,9 @@ func (ns *Namespace) Unlink(cred Credential, parent uint64, name string) error {
 func (ns *Namespace) Rmdir(cred Credential, parent uint64, name string) error {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
+	if err := checkNameLen(name); err != nil {
+		return err
+	}
 	p, err := ns.dir(cred, parent, true)
 	if err != nil {
 		return err
@@ -225,6 +253,12 @@ func (ns *Namespace) Rmdir(cred Credential, parent uint64, name string) error {
 func (ns *Namespace) Rename(cred Credential, oldParent uint64, oldName string, newParent uint64, newName string, exchange bool) error {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
+	if err := checkNameLen(oldName); err != nil {
+		return err
+	}
+	if err := checkNameLen(newName); err != nil {
+		return err
+	}
 	if _, err := ns.dir(cred, oldParent, true); err != nil {
 		return err
 	}
@@ -277,7 +311,11 @@ func (ns *Namespace) Rename(cred Credential, oldParent uint64, oldName string, n
 	dr := record.DentryRename{Flags: record.RenameMove, OldParent: oldParent, NewParent: newParent, OldName: []byte(oldName), NewName: []byte(newName)}
 	recs = append(recs, mkRec(record.TypeDentryRename, 0, dr.Encode()))
 	tm := ns.now()
-	recs = append(recs, mkRec(record.TypeInodeSetattr, 0, record.InodeSetattr{InodeID: newParent, Mtime: &tm}.Encode()))
+	// A rename marks both containing directories' mtime and ctime for update.
+	recs = append(recs, mkRec(record.TypeInodeSetattr, 0, record.InodeSetattr{InodeID: oldParent, Mtime: &tm}.Encode()))
+	if newParent != oldParent {
+		recs = append(recs, mkRec(record.TypeInodeSetattr, 0, record.InodeSetattr{InodeID: newParent, Mtime: &tm}.Encode()))
+	}
 	_, err := ns.vol.Publish(recs)
 	return err
 }
@@ -286,6 +324,9 @@ func (ns *Namespace) Rename(cred Credential, oldParent uint64, oldName string, n
 func (ns *Namespace) Link(cred Credential, parent uint64, name string, target uint64) error {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
+	if err := checkNameLen(name); err != nil {
+		return err
+	}
 	if _, err := ns.dir(cred, parent, true); err != nil {
 		return err
 	}
@@ -307,17 +348,34 @@ func (ns *Namespace) Link(cred Credential, parent uint64, name string, target ui
 	return err
 }
 
-// SetattrRequest is a partial attribute change.
+// SetattrRequest is a partial attribute change. An omitted timestamp (all four
+// time fields zero) is utimensat's UTIME_OMIT; AtimeNow/MtimeNow are UTIME_NOW.
 type SetattrRequest struct {
 	Mode  *uint32
 	UID   *uint32
 	GID   *uint32
 	Atime *record.Timespec
 	Mtime *record.Timespec
-	Size  *uint64
+	// AtimeNow/MtimeNow request the current time (utimensat UTIME_NOW).
+	AtimeNow bool
+	MtimeNow bool
+	Size     *uint64
+	// WritableHandle reports that the request arrives through an already-open
+	// writable descriptor (FUSE FATTR_FH): a size change then needs no fresh
+	// write-permission check, exactly as Linux ftruncate never re-checks.
+	WritableHandle bool
+	// KernelMode reports a mode change originated by the kernel to clear
+	// S_ISUID/S_ISGID after a write (FUSE FATTR_KILL_SUIDGID). It is applied
+	// without an ownership check, because the kernel already decided it.
+	KernelMode bool
 }
 
-// Setattr applies a partial attribute change.
+// Setattr applies a partial attribute change with the reference's permission
+// model (docs/FUSE-SEMANTICS.md §5, §5.1, §5.2): chmod/chown and an explicit
+// utimes require owner or root; a utimensat(UTIME_NOW) needs only write
+// permission for a non-owner; changing the owner requires root; changing the
+// group requires root or an owner that belongs to the target group; a size
+// change requires write permission unless it carries an open writable handle.
 func (ns *Namespace) Setattr(cred Credential, id uint64, req SetattrRequest) error {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
@@ -325,25 +383,67 @@ func (ns *Namespace) Setattr(cred Credential, id uint64, req SetattrRequest) err
 	if err != nil {
 		return err
 	}
-	// Permission: chmod/chown require ownership (or root); timestamp and size
-	// changes require write permission (or ownership).
-	if req.Mode != nil || req.UID != nil || req.GID != nil {
-		if !IsOwner(cred, in) {
-			return orfserr.Permission("only the owner may change mode or ownership")
+	isRoot := cred.UID == 0
+	ownerOrRoot := isRoot || cred.UID == in.UID
+	metaChange := req.Mode != nil || req.UID != nil || req.GID != nil
+	timeChange := req.Atime != nil || req.Mtime != nil || req.AtimeNow || req.MtimeNow
+	// Linux ATTR_TOUCH: utimensat with both fields UTIME_NOW is the one time
+	// update a non-owner may perform, provided it has write permission.
+	touchLike := !metaChange && req.AtimeNow && req.MtimeNow
+	// go-fuse cannot negotiate FUSE_HANDLE_KILLPRIV, so the kernel does not
+	// delegate the post-write setid clearing to the daemon. Instead it sends a
+	// mode-only SETATTR carrying the already-cleared mode (S_ISUID/S_ISGID
+	// removed). Recognise exactly that pattern, for a caller that could have
+	// written the file, and apply it as the kernel would.
+	kernelKillSetID := req.Mode != nil && req.UID == nil && req.GID == nil &&
+		!timeChange && req.Size == nil && in.Mode&0o6000 != 0 &&
+		(*req.Mode&0o7777) == in.Mode&^0o6000 &&
+		(ownerOrRoot || HasPermission(cred, in, 0o2))
+	if !req.KernelMode {
+		switch {
+		case kernelKillSetID:
+			// The kernel already decided; no ownership re-check.
+		case touchLike:
+			if !ownerOrRoot && !HasPermission(cred, in, 0o2) {
+				return orfserr.Access("timestamps require ownership or write permission")
+			}
+		case (metaChange || timeChange) && !ownerOrRoot:
+			return orfserr.Permission("only the owner or root may change mode, ownership or an explicit timestamp")
+		}
+		if req.UID != nil && *req.UID != in.UID && !isRoot {
+			return orfserr.Permission("changing the owner requires root")
+		}
+		if req.GID != nil && *req.GID != in.GID && !isRoot {
+			if !ownerOrRoot || !inGroup(cred, *req.GID) {
+				return orfserr.Permission("changing the group requires root or membership in the target group")
+			}
+		}
+		if req.Size != nil && !req.WritableHandle && !HasPermission(cred, in, 0o2) {
+			return orfserr.Access("write permission denied on inode %d", id)
 		}
 	}
-	if req.Atime != nil || req.Mtime != nil || req.Size != nil {
-		if !HasPermission(cred, in, 0o2) {
-			return orfserr.Permission("write permission denied on inode %d", id)
+	// A truncate by a caller without CAP_FSETID clears S_ISUID/S_ISGID. The
+	// kernel does not surface FATTR_KILL_SUIDGID here, so approximate CAP_FSETID
+	// as uid 0 and clear the bits with the resize, in one transaction.
+	mode := req.Mode
+	if mode != nil {
+		m := *mode & 0o7777
+		mode = &m
+	}
+	if req.Size != nil && !isRoot && in.Mode&0o6000 != 0 {
+		cleared := (in.Mode &^ 0o6000) & 0o7777
+		if mode != nil {
+			c := *mode &^ 0o6000
+			cleared = c
 		}
+		mode = &cleared
 	}
 	var recs []*record.Record
 	var pc record.PermissionChange
 	pc.InodeID = id
 	hasPerm := false
-	if req.Mode != nil {
-		m := *req.Mode & 0o7777
-		pc.Mode = &m
+	if mode != nil {
+		pc.Mode = mode
 		hasPerm = true
 	}
 	if req.UID != nil {
@@ -357,15 +457,19 @@ func (ns *Namespace) Setattr(cred Credential, id uint64, req SetattrRequest) err
 	if hasPerm {
 		recs = append(recs, mkRec(record.TypePermissionChange, 0, pc.Encode()))
 	}
-	if req.Atime != nil || req.Mtime != nil {
+	if hasPerm {
+		recs = append(recs, mkRec(record.TypePermissionChange, 0, pc.Encode()))
+	}
+	if timeChange {
 		sa := record.InodeSetattr{InodeID: id, Atime: req.Atime}
-		if req.Mtime != nil {
-			sa.Mtime = req.Mtime
-		} else if req.Atime != nil {
-			// setting only atime still needs a ctime bump; use atime as mtime is
-			// not implied, so publish with the current mtime.
-			m := in.Mtime
-			sa.Mtime = &m
+		if req.AtimeNow {
+			t := ns.now()
+			sa.Atime = &t
+		}
+		sa.Mtime = req.Mtime
+		if req.MtimeNow {
+			t := ns.now()
+			sa.Mtime = &t
 		}
 		recs = append(recs, mkRec(record.TypeInodeSetattr, 0, sa.Encode()))
 	}
@@ -374,6 +478,12 @@ func (ns *Namespace) Setattr(cred Credential, id uint64, req SetattrRequest) err
 			return orfserr.IsDir("cannot resize a directory")
 		}
 		recs = append(recs, mkRec(record.TypeFileResize, id, record.FileResize{NewSize: *req.Size}.Encode()))
+		// A size change is a content mutation: it advances mtime/ctime unless an
+		// explicit time was supplied in the same request (which already set them).
+		if !timeChange {
+			tm := ns.now()
+			recs = append(recs, mkRec(record.TypeInodeSetattr, 0, record.InodeSetattr{InodeID: id, Mtime: &tm}.Encode()))
+		}
 	}
 	if len(recs) == 0 {
 		return nil
@@ -391,7 +501,7 @@ func (ns *Namespace) Setxattr(cred Credential, id uint64, name string, value []b
 		return err
 	}
 	if !HasPermission(cred, in, 0o2) {
-		return orfserr.Permission("write permission denied on inode %d", id)
+		return orfserr.Access("write permission denied on inode %d", id)
 	}
 	if len(name) == 0 || len(name) > record.XattrNameMax {
 		return orfserr.Invalid("xattr name length %d out of range", len(name))
@@ -413,7 +523,7 @@ func (ns *Namespace) Removexattr(cred Credential, id uint64, name string) error 
 		return err
 	}
 	if !HasPermission(cred, in, 0o2) {
-		return orfserr.Permission("write permission denied on inode %d", id)
+		return orfserr.Access("write permission denied on inode %d", id)
 	}
 	xr := record.XattrRemove{InodeID: id, Name: []byte(name)}.Encode()
 	_, err = ns.vol.Publish([]*record.Record{mkRec(record.TypeXattrRemove, 0, xr)})
@@ -429,7 +539,7 @@ func (ns *Namespace) Getxattr(cred Credential, id uint64, name string) ([]byte, 
 		return nil, err
 	}
 	if !HasPermission(cred, in, 0o4) {
-		return nil, orfserr.Permission("read permission denied on inode %d", id)
+		return nil, orfserr.Access("read permission denied on inode %d", id)
 	}
 	v, ok := in.Xattrs[name]
 	if !ok {

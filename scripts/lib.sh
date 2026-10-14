@@ -1,16 +1,18 @@
 # Shared environment for the OrFS-GO container workflow.
 #
-# Every compilation, test, fuzz run, and mount experiment runs inside a
-# digest-pinned container with resource caps. One container runs at a time.
+# EVERYTHING runs inside a pinned, resource-capped container. Nothing heavy is
+# ever run directly on the host: a host run of an uncapped Go build/test/bench
+# has OOM-killed the editor before. One container runs at a time.
 set -eu
 
 REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 GO_VERSION=${GO_VERSION:-1.26}
 # Debian-based image: it ships gcc, so `go test -race` (which needs cgo) works.
 IMAGE="golang:${GO_VERSION}-bookworm"
-MEM_LIMIT=${ORFS_MEM_LIMIT:-4g}
-MEMSWAP_LIMIT=${ORFS_MEMSWAP_LIMIT:-4g}
-CPUS=${ORFS_CPUS:-8}
+MEM_LIMIT=${ORFS_MEM_LIMIT:-2g}
+MEMSWAP_LIMIT=${ORFS_MEMSWAP_LIMIT:-2g}
+CPUS=${ORFS_CPUS:-4}
+PIDS_LIMIT=${ORFS_PIDS_LIMIT:-1024}
 
 # Caches live inside the repo so they are bind-mounted and reused across runs.
 mkdir -p "${REPO_ROOT}/.cache/gomod" "${REPO_ROOT}/.cache/gobuild"
@@ -21,6 +23,7 @@ docker_run() {
   docker run --rm \
     --network host \
     --memory "${MEM_LIMIT}" --memory-swap "${MEMSWAP_LIMIT}" --cpus "${CPUS}" \
+    --pids-limit "${PIDS_LIMIT}" --ulimit nofile=4096:4096 \
     --cap-drop=ALL --security-opt=no-new-privileges \
     -u "$(id -u):$(id -g)" \
     -e HOME=/tmp -e GOFLAGS=-mod=mod \

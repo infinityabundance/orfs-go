@@ -24,6 +24,13 @@
 #   PJD_URL             upstream repository     (default https://github.com/pjd/pjdfstest)
 #   SEGMENT_SIZE        OrFS segment bytes      (default 8388608)
 #   PJD_TIMEOUT         bounded run seconds     (default 1800)
+#   PJD_MOUNT_FLAGS     extra `orfs mount` flags (default the reference court's
+#                       "--allow-other --entry-ttl-ms 0 --attr-ttl-ms 0")
+#   PJD_VERBOSE         when 1, additionally record the first few failing
+#                       assertions of every failing test file to
+#                       $EVID/performance/pjdfstest-failures.txt. It changes no
+#                       pass/fail accounting: the receipt is byte-identical
+#                       whether or not it is set.
 set -eu
 
 LC_ALL=C
@@ -35,6 +42,15 @@ PJD_DIR=${PJD_DIR:-/opt/pjdfstest}
 PJD_URL=${PJD_URL:-https://github.com/pjd/pjdfstest}
 SEGMENT_SIZE=${SEGMENT_SIZE:-8388608}
 PJD_TIMEOUT=${PJD_TIMEOUT:-1800}
+PJD_VERBOSE=${PJD_VERBOSE:-0}
+# --allow-other: the suite switches to unprivileged uids (nobody = 65534); a
+#   root-mounted FUSE filesystem denies every other uid at the VFS layer, so the
+#   daemon's own POSIX checks would never run. The Rust reference mounts its
+#   court the same way (docs/FUSE-SEMANTICS.md 11.1).
+# --entry-ttl-ms 0 --attr-ttl-ms 0: force every path walk back through the
+#   daemon so a cached dentry cannot satisfy a walk and skip the search-
+#   permission re-check. Matches the reference court exactly.
+PJD_MOUNT_FLAGS=${PJD_MOUNT_FLAGS:---allow-other --entry-ttl-ms 0 --attr-ttl-ms 0}
 
 if [ ! -x "$ORFS" ]; then
   echo "pjdfstest-court: SKIPPED (missing $ORFS)"
@@ -93,7 +109,7 @@ fi
 "$ORFS" init "$VOL" --segment-size "$SEGMENT_SIZE" >/dev/null 2>&1 \
   || skip "orfs init failed"
 
-"$ORFS" mount "$VOL" "$MNT" >/dev/null 2>&1 &
+"$ORFS" mount $PJD_MOUNT_FLAGS "$VOL" "$MNT" >/dev/null 2>&1 &
 mount_pid=$!
 sleep 2
 if ! mountpoint -q "$MNT"; then
@@ -149,6 +165,30 @@ if [ "$failed" -gt 0 ]; then
   note="$failed of $total pjdfstest assertions failed against the OrFS mount; every failing test file is listed under deviations (no allowlist)"
 else
   note="all $total pjdfstest assertions passed against the OrFS mount"
+fi
+
+# --- optional per-file failure detail ---------------------------------------
+
+# With PJD_VERBOSE=1, re-run each failing test file individually and record its
+# first failing assertions. This is diagnostic only: it never feeds the receipt
+# (the counts above are already fixed) and it never allowlists a failure.
+if [ "$PJD_VERBOSE" = 1 ] && [ "$failed" -gt 0 ]; then
+  FAILFILE="$EVID/performance/pjdfstest-failures.txt"
+  : > "$FAILFILE"
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    rel=${line%% *}
+    path="$PJD_DIR/$rel"
+    echo "=== $rel ===" >> "$FAILFILE"
+    if command -v timeout >/dev/null 2>&1; then
+      ( cd "$MNT" && timeout 180 prove -v "$path" 2>&1 ) \
+        | grep -E '^(not ok|# )' | head -n 25 >> "$FAILFILE" || true
+    else
+      ( cd "$MNT" && prove -v "$path" 2>&1 ) \
+        | grep -E '^(not ok|# )' | head -n 25 >> "$FAILFILE" || true
+    fi
+  done < "$DEVFILE"
+  echo "pjdfstest-court: per-file failures recorded at $FAILFILE"
 fi
 
 # --- unmount, then verify the authoritative log -----------------------------
