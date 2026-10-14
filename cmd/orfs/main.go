@@ -131,6 +131,19 @@ func newFlagSet(name string) *flag.FlagSet {
 	return fs
 }
 
+// parseManifestPolicy maps a --manifest-policy value to a manifested-body
+// admission policy. s3fifo is the scan-resistant default; lru is the baseline.
+func parseManifestPolicy(name string) (manifest.Policy, error) {
+	switch name {
+	case "s3fifo", "":
+		return manifest.PolicyS3FIFO, nil
+	case "lru":
+		return manifest.PolicyLRU, nil
+	default:
+		return manifest.PolicyS3FIFO, fmt.Errorf("unknown manifest policy %q (want s3fifo or lru)", name)
+	}
+}
+
 func cmdInit(args []string) int {
 	fs := newFlagSet("init")
 	segSize := fs.Uint64("segment-size", record.DefaultSegmentSize, "segment size in bytes")
@@ -477,12 +490,18 @@ func cmdMount(args []string) int {
 	profileDir := fs.String("profile-dir", "", "dump runtime-metrics.json + pprof profiles here on shutdown and on SIGUSR1 (Go-runtime court)")
 	profileLocks := fs.Bool("profile-locks", false, "also enable mutex/block profiling and write mutex.prof/block.prof (perturbs latency; for the lock-profile phase)")
 	compat := fs.Bool("compat", volume.EnvironCompat(), "Rust-reference compatibility profile: new writes use only the reference's registry and semantics (no CTIME_UPDATE, no special files)")
+	manifestCache := fs.Int("manifest-cache", manifest.DefaultAdmissionCapacity, "resident manifested-body cache capacity (0 = unbounded legacy map; negative = disable the manifested read plane)")
+	manifestPolicy := fs.String("manifest-policy", "s3fifo", "manifested-body admission policy: s3fifo | lru")
 	pos, err := parseFlags(fs, args)
 	if err != nil {
 		return 2
 	}
 	if len(pos) != 2 {
 		return fail(orfserr.Invalid("mount requires <backing> <mountpoint>"))
+	}
+	mPolicy, err := parseManifestPolicy(*manifestPolicy)
+	if err != nil {
+		return fail(orfserr.Invalid("%v", err))
 	}
 	tmode, err := transport.Parse(*transportName)
 	if err != nil {
@@ -515,13 +534,15 @@ func cmdMount(args []string) int {
 	attrTTLSec := *attrTTL / 1000.0
 	entryTTLSec := *entryTTL / 1000.0
 	srv := fusefs.New(v, fusefs.MountOptions{
-		AllowOther:      *allowOther,
-		ReadOnly:        *readOnly,
-		DirectIO:        *directIO,
-		SingleThreaded:  serving.SingleThreaded,
-		AttrTTLSeconds:  &attrTTLSec,
-		EntryTTLSeconds: &entryTTLSec,
-		FsName:          *fsName,
+		AllowOther:            *allowOther,
+		ReadOnly:              *readOnly,
+		DirectIO:              *directIO,
+		SingleThreaded:        serving.SingleThreaded,
+		AttrTTLSeconds:        &attrTTLSec,
+		EntryTTLSeconds:       &entryTTLSec,
+		FsName:                *fsName,
+		ManifestCacheCapacity: manifestCache,
+		ManifestCachePolicy:   mPolicy,
 	})
 	server, err := srv.Mount(pos[1])
 	if err != nil {

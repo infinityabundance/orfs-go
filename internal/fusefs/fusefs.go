@@ -44,6 +44,14 @@ type MountOptions struct {
 	AttrTTLSeconds  *float64
 	EntryTTLSeconds *float64
 	FsName          string
+	// ManifestCacheCapacity bounds the resident manifested-body (Plane C) cache.
+	// A nil pointer uses manifest.DefaultAdmissionCapacity; a pointer to 0 selects
+	// the unbounded legacy map (nothing evicted); a negative value disables the
+	// manifested read plane. The bound never changes the bytes a read returns.
+	ManifestCacheCapacity *int
+	// ManifestCachePolicy selects the admission policy for the manifested-body
+	// cache. The zero value (manifest.PolicyS3FIFO) is the scan-resistant default.
+	ManifestCachePolicy manifest.Policy
 }
 
 // Server serves a volume over FUSE.
@@ -59,15 +67,23 @@ type Server struct {
 // when it agrees with authority.
 func New(v *volume.Volume, opt MountOptions) *Server {
 	ns := namespace.New(v)
-	cache := manifest.NewCache(v)
-	cache.SetAuthority(func(inode, off, size uint64) ([]byte, bool) {
-		b, err := ns.ReadAuthoritative(namespace.Credential{}, inode, off, size)
-		if err != nil {
-			return nil, false
+	var cache *manifest.Cache
+	if opt.ManifestCacheCapacity == nil || *opt.ManifestCacheCapacity >= 0 {
+		var copts []manifest.Option
+		if opt.ManifestCacheCapacity != nil {
+			copts = append(copts, manifest.WithAdmissionCapacity(*opt.ManifestCacheCapacity))
 		}
-		return b, true
-	})
-	ns.SetManifestSource(cache)
+		copts = append(copts, manifest.WithPolicy(opt.ManifestCachePolicy))
+		cache = manifest.NewCache(v, copts...)
+		cache.SetAuthority(func(inode, off, size uint64) ([]byte, bool) {
+			b, err := ns.ReadAuthoritative(namespace.Credential{}, inode, off, size)
+			if err != nil {
+				return nil, false
+			}
+			return b, true
+		})
+		ns.SetManifestSource(cache)
+	}
 	return &Server{vol: v, ns: ns, cache: cache, opt: opt}
 }
 

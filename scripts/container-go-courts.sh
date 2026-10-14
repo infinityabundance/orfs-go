@@ -1,6 +1,6 @@
 #!/bin/sh
 # Run the in-Go courts with ORFS_EVIDENCE=1 so their receipts are written into
-# the repository: evidence/performance/{amplification,cache,groupcommit,allocs}.json,
+# the repository: evidence/performance/{amplification,cache,manifest-admission,groupcommit,allocs}.json,
 # evidence/recovery/{capacity,quarantine}.json, and evidence/crash.json.
 set -eu
 . "$(dirname "$0")/lib.sh"
@@ -15,6 +15,15 @@ docker_run env ORFS_EVIDENCE=1 sh -c \
   'go test ./internal/orbench/ ./internal/log/ -run "TestAmplification|TestCapacity|TestQuarantine"'
 docker_run env ORFS_EVIDENCE=1 sh -c \
   'go test ./internal/fcache/ -run TestScanResistance'
+# Manifested-admission court: the LIVE manifested read path (namespace.Read ->
+# manifest.Cache) under S3-FIFO admission vs LRU vs the unbounded map, over a
+# scan-heavy trace (a cold burst longer than the cache flushes a recency-only
+# cache). Asserts the hot working set survives under admission, that the bounded
+# arms stay within capacity, and that admission never changes the bytes returned.
+# Writes evidence/performance/manifest-admission.json
+# (schema orfs.performance.manifest-admission.v1).
+docker_run env ORFS_EVIDENCE=1 sh -c \
+  'go test ./internal/manifest/ -run "TestManifestAdmission" -count=1'
 # Group commit: N concurrent writers, one barrier per publish (OFF) vs one
 # barrier per batch (ON). Run here so the backing is the container's
 # overlay/ext4, where fsync has real cost.

@@ -1,11 +1,17 @@
 // Package fcache implements a self-contained suite of volatile cache eviction
 // policies and the court that measures their scan resistance.
 //
-// Three policies are provided behind one tiny interface, Cache:
+// Four policies are provided behind one tiny interface, Cache:
 //
 //   - NewS3FIFO: a scan-resistant admission cache,
-//   - NewFIFO: the insertion-ordered FIFO baseline, and
-//   - NewLRU: a faithful least-recently-used baseline.
+//   - NewFIFO: the insertion-ordered FIFO baseline,
+//   - NewLRU: a faithful least-recently-used baseline, and
+//   - NewMap: the unbounded map baseline (never evicts).
+//
+// A Cache maps a comparable key to an opaque value, so a caller can bound real
+// resident state (a parsed reader, a decoded body) rather than only count keys.
+// The policies are deterministic and each entry is O(1) amortised: no clock, no
+// randomness, no hashing of user input.
 //
 // # What S3-FIFO is
 //
@@ -55,8 +61,7 @@
 //
 // The keys here stand in for volatile, re-derivable state (parsed structures,
 // read plans); evicting one forgets a cached representation, never authoritative
-// data. Every policy is deterministic: no clock, no randomness, no hashing of
-// user input.
+// data.
 package fcache
 
 // Stats is the cumulative hit/miss accounting of a cache since construction.
@@ -78,15 +83,17 @@ func (s Stats) Rate() float64 {
 	return float64(s.Hits) / float64(s.Total())
 }
 
-// Cache is the minimal volatile-cache surface the court replays. The policies
-// are not safe for concurrent use; the court drives each from one goroutine.
-type Cache interface {
-	// Get reports whether key is resident. It records a hit when it is and a
-	// miss when it is not.
-	Get(key uint64) bool
-	// Put admits key. Putting a resident key is a no-op for the FIFO baseline,
-	// and refreshes recency (LRU) or frequency (S3-FIFO) for the others.
-	Put(key uint64)
+// Cache is the minimal volatile-cache surface. Get records a reference and
+// reports residency together with the resident value; Put admits (or refreshes)
+// a key with its value. The policies are not safe for concurrent use; the caller
+// serialises them.
+type Cache[K comparable, V any] interface {
+	// Get reports whether key is resident and, if so, returns its value. It
+	// records a hit when it is and a miss when it is not.
+	Get(key K) (V, bool)
+	// Put admits key with value. Putting a resident key is a no-op for the FIFO
+	// baseline, and refreshes recency (LRU) or frequency (S3-FIFO) for the others.
+	Put(key K, value V)
 	// Len reports the number of resident keys.
 	Len() int
 	// Stats reports the cumulative hit/miss accounting.
@@ -94,23 +101,56 @@ type Cache interface {
 }
 
 // Replay drives a key trace through a cache under the Get/Put contract: every
-// key is looked up, and a miss admits it. It returns the cache's cumulative
-// stats.
-func Replay(c Cache, trace []uint64) Stats {
+// key is looked up, and a miss admits it with the caller's placeholder value
+// (the trace only exercises residency). It returns the cache's cumulative stats.
+func Replay[K comparable, V any](c Cache[K, V], trace []K, zero V) Stats {
 	for _, k := range trace {
-		if !c.Get(k) {
-			c.Put(k)
+		if _, ok := c.Get(k); !ok {
+			c.Put(k, zero)
 		}
 	}
 	return c.Stats()
 }
 
+// mapCache is an unbounded map: nothing is ever evicted, so it has a 100% hit
+// rate on any trace and unbounded memory. It is the pre-admission baseline the
+// admission policies are measured against (bounding residency is the point).
+type mapCache[K comparable, V any] struct {
+	entries map[K]V
+	stats   Stats
+}
+
+// NewMap returns an unbounded map cache.
+func NewMap[K comparable, V any]() Cache[K, V] {
+	return &mapCache[K, V]{entries: make(map[K]V)}
+}
+
+// Get reports residency.
+func (c *mapCache[K, V]) Get(key K) (V, bool) {
+	if v, ok := c.entries[key]; ok {
+		c.stats.Hits++
+		return v, true
+	}
+	c.stats.Misses++
+	var zero V
+	return zero, false
+}
+
+// Put admits or replaces key.
+func (c *mapCache[K, V]) Put(key K, value V) { c.entries[key] = value }
+
+// Len reports the number of resident keys.
+func (c *mapCache[K, V]) Len() int { return len(c.entries) }
+
+// Stats reports the cumulative hit/miss accounting.
+func (c *mapCache[K, V]) Stats() Stats { return c.stats }
+
 // fifo is an insertion-ordered FIFO cache: a hit does not reorder the queue, so
 // the oldest inserted key is evicted first. It is the pre-admission baseline.
-type fifo struct {
+type fifo[K comparable, V any] struct {
 	capacity int
-	buf      []uint64 // ring buffer of resident keys, head is the oldest
-	resident map[uint64]struct{}
+	order    []K // ring buffer of resident keys, head is the oldest
+	values   map[K]V
 	head     int
 	size     int
 	stats    Stats
@@ -118,93 +158,97 @@ type fifo struct {
 
 // NewFIFO returns an insertion-ordered FIFO cache of the given capacity. A
 // capacity of zero or less yields a cache that never stores anything.
-func NewFIFO(capacity int) Cache {
-	c := &fifo{capacity: capacity, resident: make(map[uint64]struct{})}
+func NewFIFO[K comparable, V any](capacity int) Cache[K, V] {
+	c := &fifo[K, V]{capacity: capacity, values: make(map[K]V)}
 	if capacity > 0 {
-		c.buf = make([]uint64, capacity)
+		c.order = make([]K, capacity)
 	}
 	return c
 }
 
 // Get reports residency without reordering the queue.
-func (c *fifo) Get(key uint64) bool {
-	if _, ok := c.resident[key]; ok {
+func (c *fifo[K, V]) Get(key K) (V, bool) {
+	if v, ok := c.values[key]; ok {
 		c.stats.Hits++
-		return true
+		return v, true
 	}
 	c.stats.Misses++
-	return false
+	var zero V
+	return zero, false
 }
 
 // Put appends key, evicting the oldest resident key when full.
-func (c *fifo) Put(key uint64) {
+func (c *fifo[K, V]) Put(key K, value V) {
 	if c.capacity <= 0 {
 		return
 	}
-	if _, ok := c.resident[key]; ok {
+	if _, ok := c.values[key]; ok {
 		return
 	}
 	if c.size == c.capacity {
-		delete(c.resident, c.buf[c.head])
-		c.buf[c.head] = key
+		delete(c.values, c.order[c.head])
+		c.order[c.head] = key
 		c.head = (c.head + 1) % c.capacity
 	} else {
-		c.buf[(c.head+c.size)%c.capacity] = key
+		c.order[(c.head+c.size)%c.capacity] = key
 		c.size++
 	}
-	c.resident[key] = struct{}{}
+	c.values[key] = value
 }
 
 // Len reports the number of resident keys.
-func (c *fifo) Len() int { return c.size }
+func (c *fifo[K, V]) Len() int { return len(c.values) }
 
 // Stats reports the cumulative hit/miss accounting.
-func (c *fifo) Stats() Stats { return c.stats }
+func (c *fifo[K, V]) Stats() Stats { return c.stats }
 
 // lruNode is one node of the LRU's intrusive doubly linked list.
-type lruNode struct {
-	key        uint64
-	prev, next *lruNode
+type lruNode[K comparable, V any] struct {
+	key        K
+	value      V
+	prev, next *lruNode[K, V]
 }
 
 // lru is a faithful least-recently-used cache. A hit promotes the key to
 // most-recently-used; a miss evicts the least-recently-used key.
-type lru struct {
+type lru[K comparable, V any] struct {
 	capacity int
-	index    map[uint64]*lruNode
-	front    *lruNode // most recently used
-	back     *lruNode // least recently used
+	index    map[K]*lruNode[K, V]
+	front    *lruNode[K, V] // most recently used
+	back     *lruNode[K, V] // least recently used
 	stats    Stats
 }
 
 // NewLRU returns a least-recently-used cache of the given capacity. A capacity
 // of zero or less yields a cache that never stores anything.
-func NewLRU(capacity int) Cache {
-	return &lru{capacity: capacity, index: make(map[uint64]*lruNode)}
+func NewLRU[K comparable, V any](capacity int) Cache[K, V] {
+	return &lru[K, V]{capacity: capacity, index: make(map[K]*lruNode[K, V])}
 }
 
 // Get reports residency, promoting a hit to most-recently-used.
-func (c *lru) Get(key uint64) bool {
+func (c *lru[K, V]) Get(key K) (V, bool) {
 	if n, ok := c.index[key]; ok {
 		c.moveToFront(n)
 		c.stats.Hits++
-		return true
+		return n.value, true
 	}
 	c.stats.Misses++
-	return false
+	var zero V
+	return zero, false
 }
 
 // Put admits key at most-recently-used, evicting the least-recently-used key
 // when the capacity would be exceeded.
-func (c *lru) Put(key uint64) {
+func (c *lru[K, V]) Put(key K, value V) {
 	if c.capacity <= 0 {
 		return
 	}
 	if n, ok := c.index[key]; ok {
+		n.value = value
 		c.moveToFront(n)
 		return
 	}
-	n := &lruNode{key: key}
+	n := &lruNode[K, V]{key: key, value: value}
 	c.index[key] = n
 	c.pushFront(n)
 	if len(c.index) > c.capacity {
@@ -213,12 +257,12 @@ func (c *lru) Put(key uint64) {
 }
 
 // Len reports the number of resident keys.
-func (c *lru) Len() int { return len(c.index) }
+func (c *lru[K, V]) Len() int { return len(c.index) }
 
 // Stats reports the cumulative hit/miss accounting.
-func (c *lru) Stats() Stats { return c.stats }
+func (c *lru[K, V]) Stats() Stats { return c.stats }
 
-func (c *lru) pushFront(n *lruNode) {
+func (c *lru[K, V]) pushFront(n *lruNode[K, V]) {
 	n.prev = nil
 	n.next = c.front
 	if c.front != nil {
@@ -230,7 +274,7 @@ func (c *lru) pushFront(n *lruNode) {
 	}
 }
 
-func (c *lru) moveToFront(n *lruNode) {
+func (c *lru[K, V]) moveToFront(n *lruNode[K, V]) {
 	if c.front == n {
 		return
 	}
@@ -246,7 +290,7 @@ func (c *lru) moveToFront(n *lruNode) {
 	c.pushFront(n)
 }
 
-func (c *lru) evictBack() {
+func (c *lru[K, V]) evictBack() {
 	n := c.back
 	if n == nil {
 		return

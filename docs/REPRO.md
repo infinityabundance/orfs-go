@@ -81,6 +81,8 @@ courts do not need `/dev/fuse`.
 | --- | --- | --- |
 | growth / amplification (`internal/orbench`) | `sh scripts/container-go-courts.sh` | `evidence/performance/amplification.json` |
 | planner correctness + latency (`internal/manifest`) | `sh scripts/container-test.sh` | none (test log) |
+| scan-resistant admission (`internal/fcache`) | `sh scripts/container-go-courts.sh` | `evidence/performance/cache.json` |
+| manifested-body admission (live read path; S3-FIFO vs LRU vs unbounded map) | `sh scripts/container-go-courts.sh` | `evidence/performance/manifest-admission.json` |
 | inode spine size (`internal/inodex`) | `sh scripts/container-test.sh` | none (test log) |
 | micro-benchmarks | `sh scripts/container-bench.sh` | `evidence/performance/bench.txt` |
 | external baseline (single job) | `sh scripts/container-baseline.sh` | `evidence/performance/baseline.json` |

@@ -63,6 +63,33 @@ directly from the opened codec.
 Misses are **negative-cached**, so a volume with no manifested bodies pays no
 per-read filesystem lookup.
 
+### 3a. Admission of resident bodies (the accelerator is bounded)
+
+The resident set of opened bodies (the live `ekbloom.Reader`s and their decoded
+projections) is an **admission-controlled cache** keyed by the manifested identity
+`(inode, version, root)`, backed by the policies in `internal/fcache`:
+
+| Policy | Behaviour |
+| --- | --- |
+| `s3fifo` (default) | S3-FIFO admission: a first touch enters a small probationary queue; only a re-referenced body is promoted to the main queue; a one-pass scan of cold inodes is evicted (to a bounded ghost history) **without displacing the hot working set** |
+| `lru` | recency-only baseline — a scan burst longer than the cache evicts the hot set |
+| *(unbounded)* | the legacy open-ended map (nothing evicted); retained as a baseline, not the default |
+
+The cache is **bounded** (`DefaultAdmissionCapacity = 128` resident bodies) so a
+scan of cold inodes can never grow the accelerator without limit. Admission
+decides only **whether a body is served from memory or re-opened and re-certified
+from the store**; it never changes the bytes returned. A miss re-certifies from
+authority exactly as an empty cache would, so the correctness argument above holds
+unchanged under any policy and any capacity — including a capacity of zero, which
+degrades to a re-certify-every-time fallback. (The keys-only ghost history holds
+identities, never bodies, and a failed certification is never admitted.)
+
+The default is **S3-FIFO at capacity 128**; `orfs mount --manifest-cache <n>`
+sets the capacity (`0` = unbounded legacy map, negative = disable the manifested
+plane) and `--manifest-policy s3fifo|lru` selects the policy. The measured
+admission win is in [`../docs/BENCH.md`](BENCH.md) §7h and
+`evidence/performance/manifest-admission.json`.
+
 ## 4. Plane separation
 
 `namespace.Namespace` reaches Plane C through a one-method interface
@@ -89,7 +116,16 @@ orfs manifest <backing> --inode <id> --json   # the manifest as JSON
 ```
 
 A mounted volume installs the seam automatically; any read of a manifested inode
-is served from Plane C with an authoritative fallback.
+is served from Plane C with an authoritative fallback. The resident-body cache is
+admission-controlled and bounded by default (see §3a):
+
+```sh
+orfs mount <backing> <mnt>                       # S3-FIFO admission, capacity 128
+orfs mount <backing> <mnt> --manifest-cache 512  # a larger bound
+orfs mount <backing> <mnt> --manifest-policy lru # recency-only baseline
+orfs mount <backing> <mnt> --manifest-cache 0    # unbounded (legacy map)
+orfs mount <backing> <mnt> --manifest-cache -1   # disable the manifested plane
+```
 
 ## 7. Measured results (this host, unoptimised test build, warm cache)
 
@@ -104,6 +140,7 @@ Court: `internal/manifest/planner_test.go`; mounted round trip:
 | Amplification | 1 MiB logical → root-profile body ~1.00× |
 | Latency (1 MiB file, 4 KiB random reads) | manifested **p50 ~2× better** (~240 ns vs ~480 ns); **p99 within noise, not claimed** |
 | Mounted round trip | 270 KB file manifested, remounted, read back byte-exact (`md5`), `verify --deep` clean |
+| Resident-body admission | burst scan (cold burst > capacity): S3-FIFO keeps the hot-set hit rate at **1.00** in a **bounded 64 bodies** vs **LRU 0.00** at the same bound; the unbounded map keeps 1.00 but at 512 residents. Interleaved shape: LRU matches (no win). Capacity-2 cache: 400/400 reads byte-identical to authority |
 
 ## 8. Transport and lifecycle
 

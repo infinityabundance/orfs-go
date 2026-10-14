@@ -15,11 +15,11 @@ func BenchmarkCacheGetPut(b *testing.B) {
 
 	ctors := []struct {
 		name string
-		ctor func(int) fcache.Cache
+		ctor func(int) fcache.Cache[uint64, struct{}]
 	}{
-		{"s3fifo", fcache.NewS3FIFO},
-		{"fifo", fcache.NewFIFO},
-		{"lru", fcache.NewLRU},
+		{"s3fifo", fcache.NewS3FIFO[uint64, struct{}]},
+		{"fifo", fcache.NewFIFO[uint64, struct{}]},
+		{"lru", fcache.NewLRU[uint64, struct{}]},
 	}
 	for _, tc := range ctors {
 		b.Run(tc.name, func(b *testing.B) {
@@ -28,8 +28,8 @@ func BenchmarkCacheGetPut(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				c := tc.ctor(w.Capacity)
 				for _, k := range trace {
-					if !c.Get(k) {
-						c.Put(k)
+					if _, ok := c.Get(k); !ok {
+						c.Put(k, struct{}{})
 					}
 				}
 			}

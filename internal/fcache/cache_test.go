@@ -9,11 +9,15 @@ import (
 	"github.com/infinityabundance/orfs-go/internal/fcache"
 )
 
+// scratchValue is the placeholder payload the court admits: the scan-resistance
+// court measures residency, not payload semantics.
+type scratchValue = struct{}
+
 // policyArm pairs a policy name and note with a fresh cache instance.
 type policyArm struct {
 	name  string
 	note  string
-	cache fcache.Cache
+	cache fcache.Cache[uint64, scratchValue]
 }
 
 // scratchArms builds one fresh instance of every policy.
@@ -22,17 +26,17 @@ func scratchArms(capacity int) []policyArm {
 		{
 			name:  "s3fifo",
 			note:  "S3-FIFO admission: small probationary FIFO (~10% of capacity) with a frequency bit, main FIFO (~90%), and a keys-only ghost queue; single-touch scan keys never reach main",
-			cache: fcache.NewS3FIFO(capacity),
+			cache: fcache.NewS3FIFO[uint64, scratchValue](capacity),
 		},
 		{
 			name:  "fifo",
 			note:  "insertion-ordered FIFO baseline (the pre-admission policy); a hit does not reorder the queue, so a scan flushes the hot set",
-			cache: fcache.NewFIFO(capacity),
+			cache: fcache.NewFIFO[uint64, scratchValue](capacity),
 		},
 		{
 			name:  "lru",
 			note:  "faithful LRU baseline; a hit promotes the key to most-recently-used and a miss evicts the least-recently-used key",
-			cache: fcache.NewLRU(capacity),
+			cache: fcache.NewLRU[uint64, scratchValue](capacity),
 		},
 	}
 }
@@ -53,9 +57,9 @@ func TestScanResistance(t *testing.T) {
 	arms := scratchArms(w.Capacity)
 	stats := make(map[string]fcache.Stats, len(arms))
 	for i := range arms {
-		fcache.Replay(arms[i].cache, warmup)        // prime the hot set
-		before := arms[i].cache.Stats()             // snapshot after warm-up
-		after := fcache.Replay(arms[i].cache, scan) // measure the scan
+		fcache.Replay(arms[i].cache, warmup, scratchValue{})        // prime the hot set
+		before := arms[i].cache.Stats()                             // snapshot after warm-up
+		after := fcache.Replay(arms[i].cache, scan, scratchValue{}) // measure the scan
 		stats[arms[i].name] = fcache.Stats{
 			Hits:   after.Hits - before.Hits,
 			Misses: after.Misses - before.Misses,
@@ -106,8 +110,8 @@ func TestDeterministicReplay(t *testing.T) {
 	first := scratchArms(w.Capacity)
 	second := scratchArms(w.Capacity)
 	for i := range first {
-		a := fcache.Replay(first[i].cache, trace)
-		b := fcache.Replay(second[i].cache, trace)
+		a := fcache.Replay(first[i].cache, trace, scratchValue{})
+		b := fcache.Replay(second[i].cache, trace, scratchValue{})
 		if a != b {
 			t.Fatalf("%s is not deterministic: %+v != %+v", first[i].name, a, b)
 		}
@@ -118,27 +122,27 @@ func TestDeterministicReplay(t *testing.T) {
 func TestCacheBasics(t *testing.T) {
 	ctors := []struct {
 		name string
-		ctor func(int) fcache.Cache
+		ctor func(int) fcache.Cache[uint64, scratchValue]
 	}{
-		{"s3fifo", fcache.NewS3FIFO},
-		{"fifo", fcache.NewFIFO},
-		{"lru", fcache.NewLRU},
+		{"s3fifo", fcache.NewS3FIFO[uint64, scratchValue]},
+		{"fifo", fcache.NewFIFO[uint64, scratchValue]},
+		{"lru", fcache.NewLRU[uint64, scratchValue]},
 	}
 	for _, tc := range ctors {
 		t.Run(tc.name, func(t *testing.T) {
 			c := tc.ctor(2)
-			if c.Get(7) {
+			if _, ok := c.Get(7); ok {
 				t.Fatal("empty cache reported a hit")
 			}
-			c.Put(7)
-			if !c.Get(7) {
+			c.Put(7, scratchValue{})
+			if _, ok := c.Get(7); !ok {
 				t.Fatal("resident key reported a miss")
 			}
 			if c.Len() != 1 {
 				t.Fatalf("Len = %d, want 1", c.Len())
 			}
-			c.Put(8)
-			c.Put(9) // exceeds capacity 2, one key must go
+			c.Put(8, scratchValue{})
+			c.Put(9, scratchValue{}) // exceeds capacity 2, one key must go
 			if c.Len() != 2 {
 				t.Fatalf("Len = %d, want 2 after overflow", c.Len())
 			}
@@ -149,9 +153,9 @@ func TestCacheBasics(t *testing.T) {
 		})
 	}
 	// A zero-capacity cache never stores and always misses.
-	c := fcache.NewS3FIFO(0)
-	c.Put(1)
-	if c.Get(1) || c.Len() != 0 {
+	c := fcache.NewS3FIFO[uint64, scratchValue](0)
+	c.Put(1, scratchValue{})
+	if _, ok := c.Get(1); ok || c.Len() != 0 {
 		t.Fatal("zero-capacity cache stored a key")
 	}
 }

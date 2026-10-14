@@ -1,0 +1,109 @@
+{
+  "schema": "orfs.performance.manifest-admission.v1",
+  "workload": {
+    "capacity": 64,
+    "hot_objects": 32,
+    "scan_objects": 480,
+    "cold_burst": 96,
+    "scan_steps": 5,
+    "warmup_rounds": 4,
+    "content_bytes": 1024,
+    "read_size_bytes": 512,
+    "manifested_bodies": 512
+  },
+  "shapes": [
+    {
+      "shape": "burst",
+      "reads": 640,
+      "note": "directory-walk burst: a cold burst longer than the cache, then the hot set (the scan-pollution case)",
+      "arms": [
+        {
+          "policy": "s3fifo",
+          "capacity": 64,
+          "resident_bodies": 64,
+          "hits": 160,
+          "misses": 480,
+          "hit_rate": 0.25,
+          "hot_hits": 160,
+          "hot_misses": 0,
+          "hot_hit_rate": 1,
+          "p50_ns": 33142,
+          "note": "S3-FIFO admission: a first touch enters a small probationary queue, only a re-referenced body is promoted to main; a one-pass scan is evicted without displacing the hot set"
+        },
+        {
+          "policy": "lru",
+          "capacity": 64,
+          "resident_bodies": 64,
+          "hits": 0,
+          "misses": 640,
+          "hit_rate": 0,
+          "hot_hits": 0,
+          "hot_misses": 160,
+          "hot_hit_rate": 0,
+          "p50_ns": 32821,
+          "note": "recency-only LRU: a scan burst longer than the cache evicts the whole hot set"
+        },
+        {
+          "policy": "map",
+          "capacity": 0,
+          "resident_bodies": 512,
+          "hits": 160,
+          "misses": 480,
+          "hit_rate": 0.25,
+          "hot_hits": 160,
+          "hot_misses": 0,
+          "hot_hit_rate": 1,
+          "p50_ns": 32080,
+          "note": "the legacy unbounded resident map (nothing evicted); 100% residency but unbounded growth — the pre-admission baseline"
+        }
+      ]
+    },
+    {
+      "shape": "interleaved",
+      "reads": 15840,
+      "note": "reference shape: one cold inode then the whole hot set; the hot set stays within the cache window, so recency alone protects it",
+      "arms": [
+        {
+          "policy": "s3fifo",
+          "capacity": 64,
+          "resident_bodies": 64,
+          "hits": 15360,
+          "misses": 480,
+          "hit_rate": 0.9696969696969697,
+          "hot_hits": 15360,
+          "hot_misses": 0,
+          "hot_hit_rate": 1,
+          "p50_ns": 120,
+          "note": "S3-FIFO admission: a first touch enters a small probationary queue, only a re-referenced body is promoted to main; a one-pass scan is evicted without displacing the hot set"
+        },
+        {
+          "policy": "lru",
+          "capacity": 64,
+          "resident_bodies": 64,
+          "hits": 15360,
+          "misses": 480,
+          "hit_rate": 0.9696969696969697,
+          "hot_hits": 15360,
+          "hot_misses": 0,
+          "hot_hit_rate": 1,
+          "p50_ns": 101,
+          "note": "recency-only LRU: a scan burst longer than the cache evicts the whole hot set"
+        },
+        {
+          "policy": "map",
+          "capacity": 0,
+          "resident_bodies": 512,
+          "hits": 15360,
+          "misses": 480,
+          "hit_rate": 0.9696969696969697,
+          "hot_hits": 15360,
+          "hot_misses": 0,
+          "hot_hit_rate": 1,
+          "p50_ns": 100,
+          "note": "the legacy unbounded resident map (nothing evicted); 100% residency but unbounded growth — the pre-admission baseline"
+        }
+      ]
+    }
+  ],
+  "note": "Single-run, single-host court driving the LIVE manifested read path (namespace.Read -\u003e manifest.Cache.ManifestedRead) over one identical scan-heavy trace; only the resident-body admission policy differs. This is a HIT-RATE measurement of the manifested-body cache (hits = served from an already-open certified body; misses = re-loaded and re-certified from the store), not a latency claim; p50_ns is reported but host- and timing-dependent. Admission never changes the bytes returned (see TestManifestAdmissionPreservesBytes). The burst shape shows the win: S3-FIFO, bounded, retains the hot set under a cold burst that flushes LRU; the unbounded map retains it too but without a bound. The interleaved shape shows the honest counter-case: when the hot set is re-referenced within the cache window, recency alone protects it and admission buys nothing over LRU."
+}

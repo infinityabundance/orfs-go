@@ -47,27 +47,29 @@ func (d *deque[T]) len() int { return len(d.buf) - d.head }
 
 // ghostEntry is one ghost-queue record. The tag distinguishes a live record from
 // a stale duplicate left behind when the key was re-admitted.
-type ghostEntry struct {
-	key uint64
+type ghostEntry[K comparable] struct {
+	key K
 	tag uint64
 }
 
 // s3fifo is a scan-resistant admission cache implementing the S3-FIFO idea (see
 // the package comment). It is correct and deterministic: no clock, no
 // randomness, and no iteration over map order on any decision path.
-type s3fifo struct {
+type s3fifo[K comparable, V any] struct {
 	capacity   int
 	smallQuota int
 	ghostQuota int
 
-	// entries maps a resident key to its saturating frequency counter.
-	entries map[uint64]uint8
-	small   deque[uint64]
-	main    deque[uint64]
+	// entries maps a resident key to its saturating frequency counter; values
+	// holds the resident payload.
+	entries map[K]uint8
+	values  map[K]V
+	small   deque[K]
+	main    deque[K]
 
 	// ghost is a bounded, keys-only history of keys evicted from small.
-	ghost      deque[ghostEntry]
-	ghostIndex map[uint64]uint64
+	ghost      deque[ghostEntry[K]]
+	ghostIndex map[K]uint64
 	ghostNext  uint64
 
 	stats Stats
@@ -80,11 +82,12 @@ type s3fifo struct {
 
 // NewS3FIFO returns an S3-FIFO admission cache of the given capacity. A capacity
 // of zero or less yields a cache that never stores anything.
-func NewS3FIFO(capacity int) Cache {
-	c := &s3fifo{
+func NewS3FIFO[K comparable, V any](capacity int) Cache[K, V] {
+	c := &s3fifo[K, V]{
 		capacity:   capacity,
-		entries:    make(map[uint64]uint8),
-		ghostIndex: make(map[uint64]uint64),
+		entries:    make(map[K]uint8),
+		values:     make(map[K]V),
+		ghostIndex: make(map[K]uint64),
 	}
 	if capacity > 0 {
 		c.smallQuota = capacity / s3SmallRatio
@@ -101,25 +104,26 @@ func NewS3FIFO(capacity int) Cache {
 
 // Get reports residency, bumping the frequency counter of a resident key. A miss
 // for a key the ghost queue still remembers is recorded as a ghost hit.
-func (c *s3fifo) Get(key uint64) bool {
+func (c *s3fifo[K, V]) Get(key K) (V, bool) {
 	if f, ok := c.entries[key]; ok {
 		if f < s3MaxFreq {
 			c.entries[key] = f + 1
 		}
 		c.stats.Hits++
-		return true
+		return c.values[key], true
 	}
 	if _, ok := c.ghostIndex[key]; ok {
 		c.ghostHits++
 	}
 	c.stats.Misses++
-	return false
+	var zero V
+	return zero, false
 }
 
 // Put admits key. A key the ghost queue remembers is re-admitted straight to
 // main (a second chance); any other new key enters the small probationary queue.
 // Re-putting a resident key refreshes its frequency in place.
-func (c *s3fifo) Put(key uint64) {
+func (c *s3fifo[K, V]) Put(key K, value V) {
 	if c.capacity <= 0 {
 		return
 	}
@@ -127,8 +131,10 @@ func (c *s3fifo) Put(key uint64) {
 		if f < s3MaxFreq {
 			c.entries[key] = f + 1
 		}
+		c.values[key] = value
 		return
 	}
+	c.values[key] = value
 	if _, ok := c.ghostIndex[key]; ok {
 		delete(c.ghostIndex, key)
 		c.entries[key] = 0
@@ -146,7 +152,7 @@ func (c *s3fifo) Put(key uint64) {
 // is promoted to main, and a key still clear is discarded to ghost. Only when
 // small is within quota is main drained, giving a referenced key one second
 // chance before it is evicted.
-func (c *s3fifo) evict() {
+func (c *s3fifo[K, V]) evict() {
 	for len(c.entries) > c.capacity {
 		if c.small.len() > c.smallQuota {
 			key, ok := c.small.popFront()
@@ -159,6 +165,7 @@ func (c *s3fifo) evict() {
 				c.promotions++
 			} else {
 				delete(c.entries, key)
+				delete(c.values, key)
 				c.noteGhost(key)
 				c.evictions++
 			}
@@ -173,6 +180,7 @@ func (c *s3fifo) evict() {
 			c.main.pushBack(key)
 		} else {
 			delete(c.entries, key)
+			delete(c.values, key)
 			c.evictions++
 		}
 	}
@@ -180,14 +188,14 @@ func (c *s3fifo) evict() {
 
 // noteGhost records key in the bounded ghost queue, dropping any stale duplicate
 // it passes. The queue never exceeds ghostQuota entries.
-func (c *s3fifo) noteGhost(key uint64) {
+func (c *s3fifo[K, V]) noteGhost(key K) {
 	if c.ghostQuota <= 0 {
 		return
 	}
 	tag := c.ghostNext
 	c.ghostNext++
 	c.ghostIndex[key] = tag
-	c.ghost.pushBack(ghostEntry{key: key, tag: tag})
+	c.ghost.pushBack(ghostEntry[K]{key: key, tag: tag})
 	for c.ghost.len() > c.ghostQuota {
 		e, ok := c.ghost.popFront()
 		if !ok {
@@ -200,10 +208,10 @@ func (c *s3fifo) noteGhost(key uint64) {
 }
 
 // Len reports the number of resident keys.
-func (c *s3fifo) Len() int { return len(c.entries) }
+func (c *s3fifo[K, V]) Len() int { return len(c.entries) }
 
 // Stats reports the cumulative hit/miss accounting.
-func (c *s3fifo) Stats() Stats { return c.stats }
+func (c *s3fifo[K, V]) Stats() Stats { return c.stats }
 
 // AdmissionCounters reports the S3-FIFO admission-policy counters beyond the
 // plain hit/miss accounting.
@@ -222,8 +230,8 @@ type AdmissionCounters struct {
 
 // Counters exposes the admission counters of an S3-FIFO cache. It returns false
 // for any other policy.
-func Counters(c Cache) (AdmissionCounters, bool) {
-	s, ok := c.(*s3fifo)
+func Counters[K comparable, V any](c Cache[K, V]) (AdmissionCounters, bool) {
+	s, ok := c.(*s3fifo[K, V])
 	if !ok {
 		return AdmissionCounters{}, false
 	}

@@ -72,7 +72,9 @@ Run: the court is part of the default suite.
 sh scripts/container-test.sh   # go vet + go test ./...
 ```
 
-Receipt: none. The court prints its numbers; `evidence/` is not written. See
+Receipt: none for the planner court itself; the resident-body admission court
+(`TestManifestAdmissionScanResistance`, §7h) writes
+`evidence/performance/manifest-admission.json`. See
 [`MANIFESTATION.md`](MANIFESTATION.md) §7.
 
 ## 4. Sealed inode spine court
@@ -453,6 +455,54 @@ OOM-killed ~1.3 s in). Lower `GOGC` still buys tail at the cost of median;
 `GOMEMLIMIT` is inert until it binds. Full analysis, the before/after, and the
 GC-trace/lock-profile excerpts: [`RUNTIME.md`](RUNTIME.md).
 
+## 7h. Manifested-body admission court
+
+Court: `internal/manifest` (`TestManifestAdmissionScanResistance`,
+`TestManifestAdmissionPreservesBytes`).
+
+Drives the **live** manifested read path (`namespace.Read` →
+`manifest.Cache.ManifestedRead`) over one identical scan-heavy trace and varies
+only the admission policy of the resident-body cache: **S3-FIFO** (the default,
+bounded), **LRU** (bounded), and the legacy **unbounded map** (nothing evicted).
+The workload is 512 manifested inodes — a 32-inode hot set and a 480-inode
+cold scan walked in **bursts of 96** (a directory walk / backup scan) — with a
+bounded capacity of 64 bodies.
+
+Measured (this host, container, single run):
+
+| Shape | Arm | resident bodies | hot-set hit rate | re-certifications |
+| --- | --- | ---: | ---: | ---: |
+| burst (cold burst > capacity) | **S3-FIFO** | **64** | **1.00** | 480 |
+| burst | LRU | 64 | 0.00 | 640 |
+| burst | unbounded map | 512 (grows with the scan) | 1.00 | 480 |
+| interleaved (hot set re-referenced) | S3-FIFO / LRU / map | 64 / 64 / 512 | 1.00 / 1.00 / 1.00 | 480 each |
+
+The **admission win** is on the burst shape: a cold burst longer than the cache
+flushes a recency-only LRU (hot-set hit rate 0.00) while S3-FIFO retains the hot
+working set (1.00) at the same bounded 64 bodies, avoiding 160 re-certifications.
+The unbounded map retains the hot set too — but at 512 resident bodies, growing
+with the scan; S3-FIFO gets the same hot-set retention with a fixed bound.
+
+Honest framing: this is a **hit-rate** measurement (hits = a read served from an
+already-open certified body; misses = re-loaded and re-certified from the store).
+`p50_ns` is in the receipt but the burst shape's p50 is dominated by the
+unavoidable cold misses, so no latency win is claimed; the deterministic
+read-path benefit is the fall in re-certifications. On the **interleaved** shape
+(the reference court's shape, where the hot set is re-referenced within the cache
+window) **LRU matches S3-FIFO** — there is no admission win there. Admission never
+changes the bytes returned: `TestManifestAdmissionPreservesBytes` drives a
+capacity-2 cache (constant eviction and re-certification) and every read is
+byte-identical to authority.
+
+Run:
+
+```sh
+sh scripts/container-go-courts.sh   # writes evidence/performance/manifest-admission.json
+```
+
+Receipt: `evidence/performance/manifest-admission.json` (schema
+`orfs.performance.manifest-admission.v1`).
+
 ## 8. The frontier: measured versus not yet measured
 
 Measured today (all bounded, laboratory conditions):
@@ -467,7 +517,8 @@ Measured today (all bounded, laboratory conditions):
 | external baseline | 4K randread p50/p99/p99.9 vs ext4/tmpfs | `evidence/performance/baseline.json` |
 | 64-thread scaling | 4K randread at 64 readers | `evidence/performance/scale.json` |
 | transport (F0 vs f0-single; F2 negotiation probe) | F2 not reachable via go-fuse; kernel supports it (probed) — F0-single costs ~3.2× IOPS and ~13× p99 at 64 readers | `evidence/performance/transport.json` |
-| scan-resistant admission | S3-FIFO 95.2% vs FIFO 88.0% vs LRU 95.2% | `evidence/performance/cache.json` |
+| scan-resistant admission | S3-FIFO 95.2% vs FIFO 88.0% vs LRU 95.2% (key trace) | `evidence/performance/cache.json` |
+| manifested-body admission | live manifested read path, burst scan: S3-FIFO hot-set hit rate 1.00 at 64 resident bodies vs LRU 0.00 (same bound) and unbounded map 1.00 at 512 residents; interleaved shape: LRU matches (no win) | `evidence/performance/manifest-admission.json` |
 | capacity guard | typed `CapacityExhausted` before the first byte | `evidence/recovery/capacity.json` |
 | quarantine | torn tail moved, never truncated | `evidence/recovery/quarantine.json` |
 | cross-FS determinism | identical segment sha256 across ext4/xfs/btrfs/tmpfs | `evidence/correctness/cross-fs.json` |
