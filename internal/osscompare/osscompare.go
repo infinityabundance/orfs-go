@@ -98,18 +98,27 @@ type Row struct {
 
 // Receipt is the merged document (schema orfs.oss-compare.v1): one row per
 // {system, workload, writers, readers, block_size} plus the comparability block
-// that names every way the two configurations differ.
+// that names every way the mounted configurations differ.
 type Receipt struct {
 	Schema          string          `json:"schema"`
 	GeneratedAtUnix int64           `json:"generated_at_unix"`
 	Note            string          `json:"note"`
 	Comparability   json.RawMessage `json:"comparability"`
-	Rows            []Row           `json:"rows"`
-	Notes           []string        `json:"notes"`
+	// Systems is the sorted, distinct set of system labels present in Rows. It is
+	// recorded so a consumer can see exactly which systems the merge received and
+	// never has to infer it from the rows.
+	Systems []string `json:"systems"`
+	Rows    []Row    `json:"rows"`
+	Notes   []string `json:"notes"`
 }
 
 // Row reduces a run to its comparable facts. The run's own system label is used
 // (never a caller-supplied one), so a row can never be misattributed.
+//
+// A row carries no durability claim of its own: the run's durability string is
+// deliberately not copied into the row, because a row is a rate/latency
+// measurement, not an assertion that every system's durability request was
+// honoured (SeaweedFS's is not: see the court's comparability block).
 func (r Run) Row() Row {
 	return Row{
 		System:         r.System,
@@ -140,6 +149,41 @@ func (r Run) Row() Row {
 // readers, block_size}.
 func (r Row) key() string {
 	return fmt.Sprintf("%s\x00%s\x00%d\x00%d\x00%d", r.System, r.Workload, r.Writers, r.Readers, r.BlockSize)
+}
+
+// Systems returns the sorted, distinct system labels present in runs. The merge
+// is agnostic to how many systems a court measures (two, three, or more); this
+// is how the receipt records the set it actually received.
+func Systems(runs []Run) []string {
+	seen := make(map[string]bool, len(runs))
+	out := make([]string, 0, len(runs))
+	for _, r := range runs {
+		if r.System == "" || seen[r.System] {
+			continue
+		}
+		seen[r.System] = true
+		out = append(out, r.System)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// MissingSystems returns the expected system labels that produced no row. It is
+// the tool-level half of the "no silent holes" rule: a court (or a wrapper)
+// that claims to measure three systems can refuse to publish a receipt that
+// names only two, instead of quietly dropping the third.
+func MissingSystems(runs []Run, expected []string) []string {
+	have := make(map[string]bool, len(expected))
+	for _, s := range Systems(runs) {
+		have[s] = true
+	}
+	missing := make([]string, 0, len(expected))
+	for _, s := range expected {
+		if s != "" && !have[s] {
+			missing = append(missing, s)
+		}
+	}
+	return missing
 }
 
 // Merge turns validated runs plus a comparability blob into the receipt. It
@@ -183,11 +227,14 @@ func Merge(runs []Run, comparability json.RawMessage, nowUnix int64) (Receipt, e
 	return Receipt{
 		Schema:          ReceiptSchema,
 		GeneratedAtUnix: nowUnix,
-		Note: "A shared, deterministic driver (cmd/orfscompare) drove two mounted OrFS implementations on " +
-			"the same machine, same device, same container caps, with equal durability. This receipt is data, " +
+		Note: "A shared, deterministic driver (cmd/orfscompare) drove one or more mounted storage " +
+			"implementations on the same machine, same device, same container caps. This receipt is data, " +
 			"not a leaderboard: rows are keyed by {system, workload, writers, readers, block_size} and are never " +
-			"ranked across incomparable coordinates. Read the comparability block before drawing any conclusion.",
+			"ranked across incomparable coordinates. Durability is a per-system property recorded in the " +
+			"comparability block, not a claim this note makes for every row. Read the comparability block, " +
+			"including any not_comparable axes, before drawing any conclusion.",
 		Comparability: comparability,
+		Systems:       Systems(runs),
 		Rows:          rows,
 	}, nil
 }

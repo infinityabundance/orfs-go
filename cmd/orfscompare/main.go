@@ -1,13 +1,16 @@
 // Command orfscompare is the shared, deterministic workload driver for the
 // open-source head-to-head court (courts/oss-compare). It drives a *mounted*
-// directory — one implementation of OrFS at a time, on the same machine, under
-// the same container caps — with the two workloads a storage engineer compares:
+// directory — one mounted filesystem at a time, on the same machine, under the
+// same container caps — with the two workloads a storage engineer compares:
 //
 //   - append: every writer owns its own (preallocated) file and appends fixed
-//     4 KiB records with write(2)+fsync(2) per record — equal durability, one
-//     barrier per record — at 1 and 64 concurrent writers, for a bounded time.
-//     This is the durable 4 KiB append figure. It is *not* the zero-payload
-//     batched-publish number in evidence/performance/groupcommit.json.
+//     4 KiB records with write(2)+fsync(2) per record — one durability barrier
+//     per record requested of the mount — at 1 and 64 concurrent writers, for a
+//     bounded time. This is the durable 4 KiB append figure. It is *not* the
+//     zero-payload batched-publish number in evidence/performance/groupcommit.json.
+//     The driver issues the same syscalls on every system, but a system is only
+//     equal-durability if its fsync is a durable barrier; that is a per-system
+//     property the court records, not one this driver can assert.
 //   - read: random reads at 4 KiB, 64 KiB and 1 MiB block sizes, reporting
 //     IOPS/throughput and exact p50/p95/p99/p99.9.
 //
@@ -368,11 +371,12 @@ func runAppend(dir, system, prefix string, writers, recordBytes int, seconds flo
 		RequestSeconds: seconds,
 		ElapsedSeconds: elapsed,
 		Seed:           seed,
-		Durability:     "write+fsync per record (one durability barrier per record)",
+		Durability:     "write+fsync per record (one durability barrier per record requested)",
 		Note: "Every writer owns its own precreated file and appends fixed records with write(2)+fsync(2) per " +
-			"record: this is the durable append figure (equal durability across systems). Latency is measured " +
-			"around the write+fsync pair. Exact p50/p95/p99/p99.9 from per-worker latency samples, merged and " +
-			"sorted at the end. Bounded by duration and by -max-bytes-per-writer.",
+			"record: this is the append figure with one durability barrier per record requested of the mount. " +
+			"Whether the mount honours it is a per-system property the court records, not one this driver can " +
+			"assert. Latency is measured around the write+fsync pair. Exact p50/p95/p99/p99.9 from per-worker " +
+			"latency samples, merged and sorted at the end. Bounded by duration and by -max-bytes-per-writer.",
 	}
 	run.Stats = summarise(results, elapsed)
 	run.WriterCapped = capped.Load()

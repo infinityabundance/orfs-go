@@ -513,29 +513,38 @@ sh scripts/container-go-courts.sh   # writes evidence/performance/manifest-admis
 Receipt: `evidence/performance/manifest-admission.json` (schema
 `orfs.performance.manifest-admission.v1`).
 
-## 7i. Mounted head-to-head: OrFS-GO vs OrFS-Rust (append+fsync and read)
+## 7i. Mounted head-to-head: OrFS-GO vs OrFS-Rust vs SeaweedFS (append+fsync and read)
 
 Court: `scripts/oss-compare-court.sh` + `cmd/orfscompare` (the shared workload
 driver) + `cmd/osscomparesummary` (merge), run inside the court container by
 `scripts/container-oss-compare.sh`. Design and the comparability rules:
 [`../courts/oss-compare/README.md`](../courts/oss-compare/README.md).
 
+Three systems are driven by the same deterministic workload, on the same machine,
+the same device, and the same container caps: **OrFS-GO**, **OrFS-Rust 0.2.0**, and
+**SeaweedFS 3.99** — its FUSE client, `weed mount`, over a single-node master +
+volume + filer (pinned image `chrislusf/seaweedfs:3.99`,
+`@sha256:8d5b323911a996d5ea152115306bed468d9a849d72bcbb3800ea8d91b7728563`).
+
 Measures **the durable append a storage engineer asks for**: fixed 4 KiB records
 appended with `write(2)`+`fsync(2)` per record — one durability barrier per
-record, equal durability on both sides — at **1 and 64 concurrent writers**
-(each writer on its own precreated file), for a bounded 5 s arm. It also measures
-**block-aligned random reads** at **4 KiB / 64 KiB / 1 MiB**, at 1 and 64
-readers, for a bounded 4 s arm. Latencies are exact observed samples (per-worker
-slices merged and sorted), so a p99.9 is a real sample, and error rates are
-errno-classified (all zero here). The seed is fixed (`SEED=1`).
+record **requested of the mount** — at **1 and 64 concurrent writers** (each
+writer on its own precreated file), for a bounded 5 s arm. It also measures **block-aligned random reads** at
+**4 KiB / 64 KiB / 1 MiB**, at 1 and 64 readers, for a bounded 4 s arm. Latencies
+are exact observed samples (per-worker slices merged and sorted), so a p99.9 is a
+real sample, and error rates are errno-classified (**0 on every row of this run**).
+The seed is fixed (`SEED=1`).
 
-Both implementations are mounted on the **same machine, same device, same
-container caps** (2 GiB / 4 CPU / pids 1024), both with `--direct-io` and the same
-8 MiB segment size. OrFS-GO is a plain `orfs mount` (group commit OFF: one
-barrier per publish). OrFS-Rust 0.2.0 is mounted `--durability sync` (one `fsync`
-per transaction) with `--backing-io sync` (to match the Go daemon's synchronous
-backing I/O). Both volumes get the same seeded 4 KiB record payload and the same
-64 MiB read file.
+The two OrFS implementations are mounted with equal durability (one `fsync` per
+appended record) and the same `--direct-io`: OrFS-GO is a plain `orfs mount`
+(group commit OFF: one barrier per publish); OrFS-Rust 0.2.0 is mounted
+`--durability sync` (one `fsync` per transaction) with `--backing-io sync` (to
+match the Go daemon's synchronous backing I/O). SeaweedFS is mounted as it comes
+(`weed mount`, which exposes no `--direct-io` knob) and its **durability is not
+the same** — it flushes to a co-located server, it does not fsync to stable
+storage (see the not-comparable axes below). All three share the 2 GiB / 4 CPU /
+pids-1024 caps, the same seeded 4 KiB record payload, and the same 64 MiB read
+file.
 
 Run:
 
@@ -543,46 +552,55 @@ Run:
 sh scripts/container-oss-compare.sh
 ```
 
-Receipt: `evidence/oss-compare.json` (schema `orfs.oss-compare.v1`).
+Receipt: `evidence/oss-compare.json` (schema `orfs.oss-compare.v1`; 24 rows;
+`systems: ["OrFS-GO","OrFS-Rust","SeaweedFS"]`).
 
 Measured (this host, one bounded run — run-to-run variance is expected and is not
 quantified here). **Append: 4 KiB `write`+`fsync` per record, 5 s arms:**
 
 | system | writers | ops/s | bytes/s | p50 | p95 | p99 | p99.9 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| OrFS-GO | 1 | 18,533 | 72.4 MiB/s | 41.9 µs | 100.8 µs | 160.2 µs | 719.2 µs |
-| OrFS-GO | 64 | 26,420 | 103.2 MiB/s | 2.06 ms | 4.01 ms | 4.72 ms | 6.06 ms |
-| OrFS-Rust | 1 | 27,899 | 109.0 MiB/s | 33.5 µs | 44.9 µs | 82.5 µs | 215.3 µs |
-| OrFS-Rust | 64 | 31,786 | 124.2 MiB/s | 1.97 ms | 2.33 ms | 2.70 ms | 3.28 ms |
+| OrFS-GO | 1 | 20,523 | 80.2 MiB/s | 39.2 µs | 87.8 µs | 137.3 µs | 871.4 µs |
+| OrFS-GO | 64 | 28,910 | 112.9 MiB/s | 1.83 ms | 3.60 ms | 4.30 ms | 6.08 ms |
+| OrFS-Rust | 1 | 29,274 | 114.4 MiB/s | 32.5 µs | 40.8 µs | 77.5 µs | 139.1 µs |
+| OrFS-Rust | 64 | 30,942 | 120.9 MiB/s | 2.04 ms | 2.37 ms | 2.60 ms | 3.26 ms |
+| SeaweedFS | 1 | 193 | 0.75 MiB/s | 3.51 ms | 19.3 ms | 50.8 ms | 56.1 ms |
+| SeaweedFS | 64 | 1,970 | 7.7 MiB/s | 14.6 ms | 83.5 ms | 91.5 ms | 102 ms |
 
 **Read: block-aligned uniform random, 4 s arms, 64 MiB file:**
 
 | system | readers | block | IOPS | bytes/s | p50 | p95 | p99 | p99.9 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| OrFS-GO | 1 | 4 KiB | 94,732 | 370.0 MiB/s | 8.94 µs | 14.3 µs | 31.7 µs | 69.3 µs |
-| OrFS-GO | 64 | 4 KiB | 330,984 | 1,292.9 MiB/s | 13.7 µs | 101.6 µs | 2.66 ms | 22.2 ms |
-| OrFS-GO | 1 | 64 KiB | 45,007 | 2,812.9 MiB/s | 17.4 µs | 45.9 µs | 63.7 µs | 146.3 µs |
-| OrFS-GO | 64 | 64 KiB | 140,589 | 8,786.8 MiB/s | 357.1 µs | 1.01 ms | 2.41 ms | 6.95 ms |
-| OrFS-GO | 1 | 1 MiB | 3,280 | 3,279.7 MiB/s | 286.2 µs | 407.3 µs | 566.4 µs | 1.56 ms |
-| OrFS-GO | 64 | 1 MiB | 8,348 | 8,347.9 MiB/s | 6.26 ms | 19.8 ms | 39.4 ms | 111 ms |
-| OrFS-Rust | 1 | 4 KiB | 119,586 | 467.1 MiB/s | 7.67 µs | 10.1 µs | 18.0 µs | 37.2 µs |
-| OrFS-Rust | 64 | 4 KiB | 429,309 | 1,677.0 MiB/s | 8.97 µs | 12.8 µs | 18.9 µs | 69.8 ms |
-| OrFS-Rust | 1 | 64 KiB | 50,029 | 3,126.8 MiB/s | 14.4 µs | 30.7 µs | 52.9 µs | 860.1 µs |
-| OrFS-Rust | 64 | 64 KiB | 179,079 | 11,192.4 MiB/s | 20.6 µs | 271.4 µs | 1.87 ms | 87.7 ms |
-| OrFS-Rust | 1 | 1 MiB | 5,882 | 5,882.1 MiB/s | 157.6 µs | 238.4 µs | 359.6 µs | 1.27 ms |
-| OrFS-Rust | 64 | 1 MiB | 15,918 | 15,918.2 MiB/s | 3.73 ms | 5.09 ms | 10.5 ms | 12.0 ms |
+| OrFS-GO | 1 | 4 KiB | 100,469 | 392.5 MiB/s | 8.9 µs | 12.7 µs | 30.2 µs | 61.7 µs |
+| OrFS-GO | 64 | 4 KiB | 349,091 | 1,363.6 MiB/s | 12.7 µs | 96.3 µs | 1.95 ms | 22.2 ms |
+| OrFS-GO | 1 | 64 KiB | 49,422 | 3,088.3 MiB/s | 16.6 µs | 41.1 µs | 54.8 µs | 104.7 µs |
+| OrFS-GO | 64 | 64 KiB | 145,802 | 9,112.4 MiB/s | 344.7 µs | 863.0 µs | 2.03 ms | 6.76 ms |
+| OrFS-GO | 1 | 1 MiB | 3,572 | 3,572.1 MiB/s | 263.0 µs | 388.9 µs | 526.2 µs | 1.32 ms |
+| OrFS-GO | 64 | 1 MiB | 8,259 | 8,259.0 MiB/s | 6.27 ms | 17.7 ms | 36.9 ms | 119 ms |
+| OrFS-Rust | 1 | 4 KiB | 128,264 | 501.0 MiB/s | 7.4 µs | 9.0 µs | 11.4 µs | 27.0 µs |
+| OrFS-Rust | 64 | 4 KiB | 506,775 | 1,979.6 MiB/s | 7.4 µs | 10.5 µs | 14.0 µs | 80.9 µs |
+| OrFS-Rust | 1 | 64 KiB | 75,892 | 4,742.9 MiB/s | 12.7 µs | 16.2 µs | 21.2 µs | 36.0 µs |
+| OrFS-Rust | 64 | 64 KiB | 336,047 | 21,000.0 MiB/s | 11.7 µs | 16.6 µs | 22.2 µs | 48.0 ms |
+| OrFS-Rust | 1 | 1 MiB | 6,990 | 6,990.0 MiB/s | 140.8 µs | 172.8 µs | 201.5 µs | 288.1 µs |
+| OrFS-Rust | 64 | 1 MiB | 15,827 | 15,827.0 MiB/s | 3.77 ms | 5.53 ms | 10.6 ms | 12.5 ms |
+| SeaweedFS | 1 | 4 KiB | 1,586 | 6.2 MiB/s | 322.6 µs | 808.8 µs | 1.54 ms | 50.0 ms |
+| SeaweedFS | 64 | 4 KiB | 2,237 | 8.7 MiB/s | 20.8 ms | 74.3 ms | 79.1 ms | 89.5 ms |
+| SeaweedFS | 1 | 64 KiB | 210,240 | 13,140 MiB/s | 3.4 µs | 6.8 µs | 9.9 µs | 457.4 µs |
+| SeaweedFS | 64 | 64 KiB | 985,842 | 61,614 MiB/s | 2.2 µs | 6.3 µs | 9.1 µs | 18.0 µs |
+| SeaweedFS | 1 | 1 MiB | 19,889 | 19,889 MiB/s | 40.8 µs | 101.8 µs | 130.4 µs | 226.2 µs |
+| SeaweedFS | 64 | 1 MiB | 47,684 | 47,684 MiB/s | 47.8 µs | 287.5 µs | 20.1 ms | 208 ms |
 
-**Honest framing.** OrFS-GO is within about **0.5–0.9×** of OrFS-Rust on every
-row of this run: the durable **single-writer append is 18,533 vs 27,899 ops/s**
-(p50 41.9 µs vs 33.5 µs) and the concurrent-append rows converge (26,420 vs
-31,786 at 64 writers). The clearest remaining Go losses are the **large-block
-reads** (1 MiB: 3,280 vs 5,882 at 1 reader, 0.56×; 8,348 vs 15,918 at 64 readers,
-0.52×) and the 64-reader tail — go-fuse transport and per-request buffering,
-*not* the log or the index. That is reported as measured, without spin: the point
-of the court is the *comparable number*, not a Go win. It is **not** a
-leaderboard: rows are keyed by {system, workload, writers, readers, block_size},
-and two rows are comparable only at the same coordinate and only under the
-caveats below.
+**Honest framing (the OrFS pair).** OrFS-GO is within about **0.7–0.9×** of
+OrFS-Rust on the append rows of this run: the durable **single-writer append is
+20,523 vs 29,274 ops/s** (p50 39.2 µs vs 32.5 µs) and the concurrent-append rows
+converge (28,910 vs 30,942 at 64 writers). The clearest remaining Go losses are
+the **large-block reads** (1 MiB: 3,572 vs 6,990 at 1 reader, 0.51×; 8,259 vs
+15,827 at 64 readers, 0.52×) and the 64-reader tail — go-fuse transport and
+per-request buffering, *not* the log or the index. That is reported as measured,
+without spin: the point of the court is the *comparable number*, not a Go win. It
+is **not** a leaderboard: rows are keyed by {system, workload, writers, readers,
+block_size}, and two rows are comparable only at the same coordinate and only
+under the caveats below.
 
 **The step-1 single-writer append loss is fixed: extent structural sharing
 (Phase 27 parity).** The first run of this court measured OrFS-GO at **3,097
@@ -613,48 +631,100 @@ allocates nothing**. Evidence:
 - A `PlanReadInto` over a 16,384-extent file resolves in **0 allocations**
   (`TestPlanReadIntoZeroAlloc`).
 
-The result is the row above: **18,533 ops/s** (p50 41.9 µs), down from 297 µs
+The result is the row above: **20,523 ops/s** (p50 39.2 µs), down from 297 µs
 p50 — inside 1.5× of the Rust reference instead of 8.8× behind it.
+
+**SeaweedFS (the third system).** SeaweedFS is a **client/server** filesystem: a
+single-node `weed server` (master + volume + filer) plus its FUSE client
+(`weed mount`), staged from the pinned image and driven by the *same* driver on
+the *same* caps. Two results are worth stating plainly, and neither is a win for
+OrFS:
+
+- **Its `fsync` is not the OrFS barrier.** The driver issues the same
+  `write(2)`+`fsync(2)` per 4 KiB record, but `weed mount` disposes of `Fsync` by
+  flushing the client's dirty pages to the co-located volume server (an HTTP PUT
+  over loopback) and committing filer metadata over gRPC; it does **not** fsync
+  the volume `.dat` file or the filer store to stable storage. So the append rows
+  are **not** one-durability-barrier-per-record numbers and must not be read as
+  equal-durability with the OrFS rows.
+- **Its read shape is not the OrFS read path.** Under the identical `pread`
+  workload SeaweedFS ran **4 KiB random reads at ~1.6–2.2k IOPS** but **64 KiB
+  random reads at ~0.2–1.0M IOPS** (a ~100–600× gap), and a preceding warm 64 KiB
+  pass did not change the 4 KiB rate (checked directly): its client serves some
+  read sizes from an in-process chunk cache and others with a backing round trip.
+
+The append rows are dominated by the round trips the workload actually makes:
+the single-writer 4 KiB append is **193 ops/s** (p50 3.51 ms) and the 64-writer
+append is **1,970 ops/s** (p50 14.6 ms) — about **106×** and **15×** below
+OrFS-GO's 20,523 and 28,910 ops/s at the same coordinates. That is measured, not
+asserted, and it is **not** a like-for-like durability comparison (first bullet
+above). This is the first court to run a *client/server* system on the same
+driver; the numbers put its network-crossing data path beside the local OrFS
+daemons without ranking them.
+
+On the shared 2 GiB cap, SeaweedFS's stack (server + client) plus the driver
+exceeded the cap at SeaweedFS's default Go GC settings on an earlier run and the
+kernel OOM-killed the volume server mid-arm. The published run bounds both `weed`
+processes with `GOGC=50 GOMEMLIMIT=700MiB` (recorded in
+`comparability.systems.SeaweedFS.go_runtime_env` and as a not-comparable axis);
+without it, one arm was lost and the court correctly **FAIL**ed with a partial
+receipt rather than publishing a hole.
 
 **Measurement order and memory.** Within each system the **read arms run before
 the append arms**, on a quiet volume: because OrFS retains appended history, a
 4 KiB append is committed, deferred, and its data-offset in its transaction, so
 measuring appends first would evict the read file from the backing page cache and
 make every `--direct-io` read a backing I/O (this is why the read rows here differ
-from the first run of the court). Both systems are measured in the same order. The
-two systems' arms also run **strictly sequentially**, and a finished system's
-daemon and volume are **released before the next system's arms** — so neither
-daemon competes for the shared 2 GiB cap (an earlier run OOM-killed the Rust
-daemon mid-arm on that cap). The `comparability.arms` block records that every
-expected arm ran (`8/8` for each system).
+from the first run of the court). All systems are measured in the same order. The
+systems' arms also run **strictly sequentially**, and a finished system's daemon
+and volume (or, for SeaweedFS, its mount and cluster) are **released before the
+next system's arms** — so no two compete for the shared 2 GiB cap (earlier runs
+OOM-killed the Rust daemon, and the SeaweedFS volume server, mid-arm on that cap).
+The `comparability.arms` block records that every expected arm ran (`8/8` for each
+of OrFS-GO, OrFS-Rust, and SeaweedFS).
 
-**Comparability caveats (every way the two configurations differ — from the
+**Comparability caveats (every way the mounted configurations differ — from the
 receipt's `comparability` block):**
 
-- **FUSE userspace library.** go-fuse/v2 (Go) vs the `fuser` crate (Rust). Both
-  speak classical `/dev/fuse` with one request per operation, but they are
-  independent daemons; this is the dominant uncontrolled variable.
+- **FUSE userspace library.** go-fuse/v2 is used by OrFS-GO *and* SeaweedFS; the
+  `fuser` crate by OrFS-Rust. All three speak classical `/dev/fuse` with one
+  request per operation, but they are independent daemons.
 - **Transport shape.** Go serves its default `f0` multi-reader loop; Rust serves
-  its classical `fuse` transport. Same wire protocol, different daemon
-  concurrency shape.
+  its classical `fuse` transport; SeaweedFS serves go-fuse. Same wire protocol,
+  different daemon concurrency shapes.
 - **Backing I/O.** The Go daemon is synchronous (pwrite/pread); Rust was pinned to
   `--backing-io sync` to match, because its default on this host is `io_uring`
-  and the Go build has no io_uring backing path.
+  and the Go build has no io_uring backing path; SeaweedFS's FUSE client PUTs data
+  over loopback HTTP to a co-located volume server that writes its own `.dat`.
+- **Durability is NOT equal across all three.** OrFS-GO and OrFS-Rust each take
+  one durable `fsync` per 4 KiB record; SeaweedFS's `Fsync` flushes to a
+  co-located server without fsyncing the volume `.dat` or the filer store. These
+  are the `not_comparable` axes: **append durability**, **data path**, and
+  **read-path caching shape**.
+- **`--direct-io`.** OrFS-GO and OrFS-Rust are both mounted with it
+  (`FOPEN_DIRECT_IO`); `weed mount` exposes no such knob. Recorded, not removed.
+- **Memory budget.** The shared 2 GiB cap must hold SeaweedFS's whole stack plus
+  the driver; both `weed` processes run under `GOGC=50 GOMEMLIMIT=700MiB` to fit
+  (an earlier run OOM-killed the volume server mid-arm at default GC). This is a
+  SeaweedFS-only environment-fit knob and is recorded.
 - **Rust daemon stderr.** The receipt records the Rust daemon's captured stderr:
-  a `fuser` `poll` WARN and a reply-after-close ERROR during the arms (the
-  `fuser` crate does not implement `poll`). The driver's arms still recorded error
-  rate 0 everywhere.
+  a `fuser` `poll` WARN and an unmount WARN. The driver's arms still recorded
+  error rate 0 everywhere.
 - **Host variance.** Page-cache state, the kernel scheduler, and the backing
   device's write cache are not controlled beyond the shared container;
   run-to-run variance is expected and is not quantified here.
-- **Order and memory (methodology, identical for both systems).** Reads are
-  measured before appends on a quiet volume; the two systems' arms run strictly
+- **Order and memory (methodology, identical for all systems).** Reads are
+  measured before appends on a quiet volume; the systems' arms run strictly
   sequentially and a finished system's daemon and volume are released before the
-  next system's arms, so neither competes for the shared 2 GiB cap. See
+  next system's arms, so no two compete for the shared 2 GiB cap. See
   [`../courts/oss-compare/README.md`](../courts/oss-compare/README.md).
-- **Equal, not caveats:** `--direct-io` (`FOPEN_DIRECT_IO`), one durability
-  barrier per 4 KiB record, 4 KiB record size, and the 8 MiB segment size are the
-  same on both sides.
+- **Equal, not caveats:** the 4 KiB record size, the seeded payload, the 64 MiB
+  read file, the 8 MiB segment size (OrFS pair), and `--direct-io` (OrFS pair) are
+  the same across the systems that support them.
+
+No ranking is implied: rows are keyed by `{system, workload, writers, readers,
+block_size}`, and two rows are comparable only at the same coordinate and only
+under the caveats above.
 
 ## 7j. Retention court: Btrfs read-only snapshots vs the OrFS-GO log
 
@@ -776,7 +846,7 @@ Measured today (all bounded, laboratory conditions):
 | crash consistency (real `SIGKILL`) | 1000 kills mid-append: 379 abandoned tails (4 torn / 375 uncommitted), all quarantined (moved, never truncated); 0 truncations / 0 prefix mismatches / 0 recover failures; `verify --deep` clean | `evidence/crash.json` |
 | Go-runtime GC scaling | 9-arm GOGC×GOMEMLIMIT sweep under 64 readers + 8 writers: p99.9 3.9 ms (`GOGC=50`) … 78.2 ms (`GOGC=off`+512MiB); GC pauses ≤ 98 µs (not the tail); ~2–3 GB/s allocation; `GOGC=off`+no limit OOM-killed ~1.3 s in. **After** removing the global read lock: `/sync/mutex/wait` down 1.5–10× (2.4× at `GOGC=100`), reader throughput ~2.5×, and the `RWMutex` gone from the lock profiles | `evidence/performance/gc-scaling.json` |
 | lock-free read views | a commit publishes an immutable namespace view (path-copying treap + persistent dentry map) through an `atomic.Pointer`; readers traverse it with no lock. Same-session A/B at 64 readers / 8 writers: mutex wait 141.2→93.1 s (`GOGC=400`) … 162.3→16.0 s (`GOGC=20`); throughput 117→288 kIOPS (`GOGC=100`); p99.9 16.7→3.9 ms (`GOGC=50`); `RWMutex` absent from mutex/block profiles | `docs/CONCURRENCY.md`, `docs/RUNTIME.md` §3b/§3c |
-| mounted head-to-head (OrFS-GO vs OrFS-Rust) | shared deterministic driver, equal durability: durable 4 KiB append+fsync at 1/64 writers and 4K/64K/1MiB random reads at 1/64 readers. OrFS-Rust faster on most rows in this run and the two converge at 64 writers; every configuration difference is recorded as a caveat. Not a leaderboard | `evidence/oss-compare.json` |
+| mounted head-to-head (OrFS-GO vs OrFS-Rust vs SeaweedFS) | shared deterministic driver, same caps: durable 4 KiB append+fsync at 1/64 writers and 4K/64K/1MiB random reads at 1/64 readers. OrFS-GO within 0.7×–0.9× of OrFS-Rust on the append rows; SeaweedFS's FUSE client is 15×–106× slower on append and its `fsync` is a flush-to-server, not a durable barrier (recorded as not comparable). Not a leaderboard | `evidence/oss-compare.json` |
 | retention (Btrfs read-only snapshots vs the OrFS-GO log) | one defined epoch workload retains every committed state: Btrfs keeps 8 read-only snapshots (each exclusive 0, all extents shared) at 1.246× device bytes for 8 MiB logical; OrFS-GO keeps 0 snapshots at 1.116× `or.log` bytes; snapshot create ~0.73 ms; a warm historical read equals a warm current read. Historical-read and snapshot-cost axes are Btrfs-only (recorded as not comparable). Not a leaderboard | `evidence/retention-btrfs.json` |
 
 Explicitly not yet measured (absence is deliberate, not implied):
@@ -786,7 +856,7 @@ Explicitly not yet measured (absence is deliberate, not implied):
 | F2 FUSE-over-`io_uring` transport | **not reachable from pure Go via go-fuse** — the kernel supports it (probed live), the linked library does not; the measured F0 comparison is published (`TRANSPORT.md`, §6b) |
 | Multi-day amplification curve; profile selection by measured worth | not run |
 | Mount latency after a large (2^30-byte) history | not run (`OPERATIONS.md` §3) |
-| Open-source head-to-head, later steps | step 1 ships (`OrFS-GO` vs `OrFS-Rust`, §7i); Btrfs read-only snapshots now ship as the retention court (§7j); SeaweedFS FUSE and OpenZFS are the next comparators, on the same driver and the same rules |
+| Open-source head-to-head, later steps | step 2 ships (OrFS-GO vs OrFS-Rust vs SeaweedFS FUSE, §7i); Btrfs read-only snapshots ship as the retention court (§7j); OpenZFS is the next comparator, on the same driver and the same rules |
 
 No performance superiority is claimed beyond the measured planner p50 figure and
 the inode-spine measurements. The Go-runtime court measures the daemon's own

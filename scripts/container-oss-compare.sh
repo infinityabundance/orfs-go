@@ -1,14 +1,16 @@
 #!/bin/sh
-# Open-source head-to-head court, step 1 — host wrapper.
+# Open-source head-to-head court, step 2 — host wrapper.
 #
-# Builds the Rust reference (if needed), builds the pinned court image, and runs
-# the mounted court inside the capped court container (root + /dev/fuse +
-# CAP_SYS_ADMIN) with the Rust binary bind-mounted read-only. The receipt
-# persists at the repository's evidence/oss-compare.json.
+# Builds the Rust reference (if needed), stages the SeaweedFS FUSE client from
+# the pinned image, builds the pinned court image, and runs the mounted court
+# inside the capped court container (root + /dev/fuse + CAP_SYS_ADMIN) with the
+# Rust binary and the `weed` binary bind-mounted read-only. The receipt persists
+# at the repository's evidence/oss-compare.json.
 #
 # SKIPPED (never a false pass) when: no docker, no /dev/fuse, or the Rust
-# reference cannot be built. If the Rust reference is absent but OrFS-GO can be
-# measured, the court runs anyway and records the asymmetry as a caveat.
+# reference cannot be built. If the Rust reference or the SeaweedFS binary is
+# absent but OrFS-GO can be measured, the court runs anyway and records the
+# asymmetry (or the named SeaweedFS SKIPPED) as a caveat.
 #
 # Usage: sh scripts/container-oss-compare.sh
 set -eu
@@ -30,6 +32,19 @@ if [ ! -x "${ORFS_RS_BIN}" ]; then
     echo "container-oss-compare: SKIPPED (could not build the Rust reference; see the cargo output above)"
     exit 0
   fi
+fi
+
+# Stage the SeaweedFS FUSE client (`weed`) from the pinned image. If it cannot
+# be staged (no network, ...), the court still runs the OrFS pair and records
+# SeaweedFS as a named SKIPPED with the reason — never a silent omission.
+SW_MOUNT_RO=""
+SW_ENV=""
+if stage_seaweedfs; then
+  SW_DIGEST=$(seaweedfs_image_digest)
+  SW_MOUNT_RO="-v ${SEAWEEDFS_DIR}:/out-sw:ro"
+  SW_ENV="-e WEED=/out-sw/weed -e SEAWEEDFS_IMAGE=${SEAWEEDFS_IMAGE} -e SEAWEEDFS_DIGEST=${SW_DIGEST}"
+else
+  echo "container-oss-compare: SKIPPED SeaweedFS (could not stage ${SEAWEEDFS_IMAGE}); the OrFS pair will still be measured" >&2
 fi
 
 mkdir -p "${REPO_ROOT}/evidence"
@@ -55,8 +70,10 @@ docker run --rm \
   -e BLOCK_SIZES="${BLOCK_SIZES:-4096 65536 1048576}" \
   -e RECORD_BYTES="${RECORD_BYTES:-4096}" -e READ_MIB="${READ_MIB:-64}" \
   -e MAX_APPEND_MIB="${MAX_APPEND_MIB:-1024}" -e SEED="${SEED:-1}" \
+  ${SW_ENV} \
   -v "${REPO_ROOT}/evidence":/evidence \
   -v "${ORFS_RS_DIR}":/out-rs:ro \
+  ${SW_MOUNT_RO} \
   -w /src \
   "${COURT_IMAGE}" sh /src/scripts/oss-compare-court.sh
 rc=$?

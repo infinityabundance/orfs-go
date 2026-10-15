@@ -81,6 +81,67 @@ func TestMergeRejectsEmptySystem(t *testing.T) {
 	}
 }
 
+func TestMergeHandlesThreeSystems(t *testing.T) {
+	comp := json.RawMessage(`{"same_machine":true}`)
+	rec, err := Merge([]Run{
+		run("SeaweedFS", "append", 1, 0, 4096, 3),
+		run("OrFS-Rust", "read", 0, 1, 4096, 20),
+		run("OrFS-GO", "append", 1, 0, 4096, 10),
+		run("SeaweedFS", "read", 0, 64, 4096, 200),
+	}, comp, 7)
+	if err != nil {
+		t.Fatalf("Merge: %v", err)
+	}
+	if len(rec.Rows) != 4 {
+		t.Fatalf("rows = %d, want 4", len(rec.Rows))
+	}
+	// systems is sorted and distinct, and agrees with the rows.
+	want := []string{"OrFS-GO", "OrFS-Rust", "SeaweedFS"}
+	if len(rec.Systems) != len(want) {
+		t.Fatalf("systems = %v, want %v", rec.Systems, want)
+	}
+	for i, s := range want {
+		if rec.Systems[i] != s {
+			t.Errorf("systems[%d] = %q, want %q", i, rec.Systems[i], s)
+		}
+	}
+}
+
+func TestSystemsSortedDistinct(t *testing.T) {
+	got := Systems([]Run{
+		run("Zeta", "read", 0, 1, 4096, 1),
+		run("Alpha", "append", 1, 0, 4096, 1),
+		run("Zeta", "append", 1, 0, 4096, 1),
+	})
+	want := []string{"Alpha", "Zeta"}
+	if len(got) != len(want) {
+		t.Fatalf("systems = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("systems[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestMissingSystems(t *testing.T) {
+	runs := []Run{
+		run("OrFS-GO", "append", 1, 0, 4096, 1),
+		run("OrFS-Rust", "append", 1, 0, 4096, 1),
+	}
+	missing := MissingSystems(runs, []string{"OrFS-GO", "OrFS-Rust", "SeaweedFS"})
+	if len(missing) != 1 || missing[0] != "SeaweedFS" {
+		t.Fatalf("missing = %v, want [SeaweedFS]", missing)
+	}
+	if got := MissingSystems(runs, nil); len(got) != 0 {
+		t.Fatalf("nil expectation should be satisfied, got %v", got)
+	}
+	// An expectation with no runs is entirely missing (no silent holes).
+	if got := MissingSystems(nil, []string{"SeaweedFS"}); len(got) != 1 {
+		t.Fatalf("expected SeaweedFS reported missing, got %v", got)
+	}
+}
+
 func TestRowCarriesErrorRate(t *testing.T) {
 	r := run("OrFS-GO", "append", 1, 0, 4096, 100)
 	r.Stats.Errors = 4

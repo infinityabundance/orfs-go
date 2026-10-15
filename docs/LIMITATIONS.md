@@ -32,7 +32,7 @@ That is now fixed. `internal/index.ExtentMap` is a persistent, path-copying
 a write is `O(log E + k)`, a read visits only intersecting extents and allocates
 nothing). Per-append cost is measured **flat** from 256 to 8,192 appends
 (`evidence/performance/append-scaling.json`, growth ratio 1.001×;
-`docs/BENCH.md` §7i), and the court now measures **18,533 ops/s** single-writer —
+`docs/BENCH.md` §7i), and the court now measures **20,523 ops/s** single-writer —
 within 1.5× of the reference instead of 8.8× behind it.
 
 What nevertheless remains, and is **not** claimed: `E` still grows 1:1 with
@@ -223,3 +223,45 @@ measured, and no number is extrapolated.
 - **No compression/dedup/qgroup accounting.** Compression, dedup and per-qgroup
 referenced/exclusive accounting are not enabled or measured; snapshot sharing is
 read from `btrfs filesystem du` only.
+
+## 13. The third comparator is a client/server system whose `fsync` is not a durable barrier
+
+The head-to-head court now also measures **SeaweedFS** (its FUSE client,
+`weed mount`, over a single-node master + volume + filer; pinned image
+`chrislusf/seaweedfs:3.99`,
+`@sha256:8d5b323911a996d5ea152115306bed468d9a849d72bcbb3800ea8d91b7728563`) on the
+same driver and the same container caps (`docs/BENCH.md` §7i). What that court
+does **not** establish, and this section makes explicit:
+
+- **SeaweedFS's `fsync` is not the OrFS durability barrier.** `weed mount`
+implements `Fsync` as a flush of the client's dirty pages to the co-located
+volume server over loopback HTTP, plus a filer metadata commit over gRPC; it
+does not fsync the volume `.dat` or the filer store to stable storage
+(`weed/mount/weedfs_file_sync.go`: `Fsync` -> `doFlush` ->
+`dirtyPages.FlushData`). The driver still issues `write(2)`+`fsync(2)` per 4 KiB
+record, but the SeaweedFS append rows are **not**
+one-durability-barrier-per-record numbers and must not be read as equal
+durability with the OrFS rows. Recorded in `comparability.not_comparable`
+(axis `append durability`).
+- **SeaweedFS is a client/server filesystem, not a local daemon.** Even
+co-located, its data crosses the loopback network stack to the volume server and
+its metadata crosses gRPC to the filer. Recorded as a not-comparable axis
+(`data path`), not silently averaged in.
+- **Its read path is a client cache, not the OrFS daemon path.** Under the
+identical `pread` workload SeaweedFS served 64 KiB random reads at ~0.2–1.0M
+IOPS but 4 KiB random reads at only ~1.6–2.2k IOPS, and a preceding warm 64 KiB
+pass did not change the 4 KiB rate; the client serves some read sizes from an
+in-process chunk cache. Recorded as a not-comparable axis (`read-path caching
+shape`).
+- **`weed mount` exposes no `--direct-io`.** The `FOPEN_DIRECT_IO` parity the two
+OrFS mounts share is unavailable; recorded, not removed.
+- **It needed a memory-fit knob to share the 2 GiB cap.** At its default Go GC
+settings the SeaweedFS stack plus the driver exceeded the shared cap and the
+kernel OOM-killed the volume server mid-arm (the court then correctly FAILed
+with a partial receipt, naming the missing arm). The published run bounds both
+`weed` processes with `GOGC=50 GOMEMLIMIT=700MiB`; that is a SeaweedFS-only
+environment-fit choice and is recorded. No number is extrapolated beyond this
+bounded, single-run workload.
+- **It is one image/version, mounted one way.** One pinned image and one mount
+configuration were measured; no tuning sweep (replication, filer store,
+`-concurrency`, RDMA) is claimed.

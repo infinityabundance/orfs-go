@@ -100,6 +100,42 @@ docker_run_rust_fuse() {
     "${RUST_IMAGE}" "$@"
 }
 
+# --- SeaweedFS (third comparator: its FUSE client, `weed mount`) -------------
+# The head-to-head court's third system is a single-node SeaweedFS (master +
+# volume + filer) served through its FUSE client. It is not built from source
+# here: the pinned upstream image is pulled with an explicit --platform (the host
+# may cache an arm64 variant of the tag) and the single static `weed` binary is
+# extracted with docker create/docker cp. The image is never *run* on the host;
+# the binary is bind-mounted read-only into the capped court container.
+SEAWEEDFS_IMAGE=${ORFS_SEAWEEDFS_IMAGE:-chrislusf/seaweedfs:3.99}
+SEAWEEDFS_DIR=${REPO_ROOT}/.cache/seaweedfs
+SEAWEEDFS_BIN=${SEAWEEDFS_DIR}/weed
+mkdir -p "${SEAWEEDFS_DIR}"
+
+# seaweedfs_image_digest prints the pinned repo digest (manifest list) of the
+# image, or "unavailable". It is recorded verbatim in the court receipt.
+seaweedfs_image_digest() {
+  docker image inspect --format '{{index .RepoDigests 0}}' "${SEAWEEDFS_IMAGE}" 2>/dev/null \
+    || echo unavailable
+}
+
+# stage_seaweedfs extracts the pinned `weed` binary into .cache/seaweedfs/weed.
+# It is idempotent and returns non-zero when the binary cannot be staged (no
+# docker, no network to pull, ...). It never runs the image on the host.
+stage_seaweedfs() {
+  [ -x "${SEAWEEDFS_BIN}" ] && return 0
+  have_docker || return 1
+  docker pull --platform linux/amd64 "${SEAWEEDFS_IMAGE}" >/dev/null 2>&1 || true
+  _cid=$(docker create --platform linux/amd64 "${SEAWEEDFS_IMAGE}" 2>/dev/null) || return 1
+  if ! docker cp "${_cid}:/usr/bin/weed" "${SEAWEEDFS_BIN}" >/dev/null 2>&1; then
+    docker rm "${_cid}" >/dev/null 2>&1 || true
+    return 1
+  fi
+  docker rm "${_cid}" >/dev/null 2>&1 || true
+  chmod +x "${SEAWEEDFS_BIN}"
+  [ -x "${SEAWEEDFS_BIN}" ]
+}
+
 have_docker() { command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; }
 have_fuse()   { [ -e /dev/fuse ]; }
 
