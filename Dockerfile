@@ -23,10 +23,19 @@ RUN go vet ./... && go test ./...
 # cross-FS determinism court formats and mounts, and the upstream pjdfstest
 # POSIX suite, for the mounted courts.
 FROM deps AS court
-RUN apt-get update \
+# zfsutils-linux lives in Debian's `contrib` component, so enable it before the
+# install. The OpenZFS retention court (scripts/container-retention-zfs.sh) ships
+# the `zpool`/`zfs` userspace tools (and kmod, so `modprobe -n` can be queried) so
+# it can probe for a reachable OpenZFS. The ZFS kernel module itself is a host
+# concern: it is never installed or loaded here.
+RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+      sed -i 's/^Components: main.*/Components: main contrib/' /etc/apt/sources.list.d/debian.sources; \
+    fi \
+ && apt-get update \
  && apt-get install -y --no-install-recommends \
       fio fuse3 psmisc util-linux coreutils \
       e2fsprogs xfsprogs btrfs-progs \
+      zfsutils-linux kmod \
       perl libtest-harness-perl \
       git autoconf automake make \
  && rm -rf /var/lib/apt/lists/*

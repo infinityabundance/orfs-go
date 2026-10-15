@@ -1,7 +1,9 @@
-// Package retention holds the shared, testable vocabulary of the Btrfs
-// retained-snapshots retention court (courts/retention-btrfs): the measurement a
-// single bounded arm produces (cmd/retentionbench) and the merged receipt the
-// court publishes (cmd/retentionsummary).
+// Package retention holds the shared, testable vocabulary of the retention
+// courts: the Btrfs retained-snapshots court (courts/retention-btrfs) and the
+// OpenZFS retained-snapshot court (courts/retention-zfs). It defines the
+// measurement a single bounded arm produces (cmd/retentionbench), the OpenZFS
+// space/snapshot accounting, and the merged receipt the courts publish
+// (cmd/retentionsummary).
 //
 // The court answers a retention question, not an IOPS question: can a system
 // retain every committed historical transition while achieving comparable tail
@@ -30,6 +32,9 @@ const (
 	SpaceSchema       = "orfs.retention.space.v1"
 	SnapshotSchema    = "orfs.retention.snapshot.v1"
 	ReceiptSchema     = "orfs.retention.btrfs.v1"
+	// ZFSReceiptSchema is the receipt schema of the OpenZFS retention court
+	// (courts/retention-zfs), which reuses this merged vocabulary.
+	ZFSReceiptSchema = "orfs.retention.zfs.v1"
 )
 
 // Measured arm kinds.
@@ -115,7 +120,13 @@ type Space struct {
 	TotalBytes     int64  `json:"total_bytes,omitempty"`
 	ExclusiveBytes int64  `json:"exclusive_bytes,omitempty"`
 	SetSharedBytes int64  `json:"set_shared_bytes,omitempty"`
-	Note           string `json:"note"`
+	// ZFS accounting (the ZFS court): the four `zfs list` figures, recorded raw.
+	// For a snapshot, `used` is the space freed by destroying it.
+	UsedBytes              int64  `json:"used_bytes,omitempty"`
+	ReferencedBytes        int64  `json:"referenced_bytes,omitempty"`
+	LogicalUsedBytes       int64  `json:"logical_used_bytes,omitempty"`
+	LogicalReferencedBytes int64  `json:"logical_referenced_bytes,omitempty"`
+	Note                   string `json:"note"`
 }
 
 // Snapshot records the cost of creating one read-only retained snapshot (schema
@@ -209,10 +220,18 @@ func (r Row) key() string {
 		r.System, r.Kind, r.State, r.Epoch, r.Writers, r.Readers, r.BlockSize)
 }
 
-// Merge turns validated arms plus a comparability blob into the receipt. It
-// rejects duplicate keys (a receipt must not carry two rows for the same
-// comparable coordinate) and any arm whose schema is not the court's.
+// Merge turns validated arms plus a comparability blob into the Btrfs court's
+// receipt. It rejects duplicate keys (a receipt must not carry two rows for the
+// same comparable coordinate) and any arm whose schema is not the court's.
 func Merge(measures []Measure, spaces []Space, snaps []Snapshot, comparability json.RawMessage, nowUnix int64) (Receipt, error) {
+	return MergeFor(measures, spaces, snaps, comparability, ReceiptSchema, "Btrfs", nowUnix)
+}
+
+// MergeFor is Merge with an explicit receipt schema and comparator name, so the
+// same merge serves the Btrfs retention court and the OpenZFS retention court
+// (which names "OpenZFS" and stamps ZFSReceiptSchema). Merge keeps the Btrfs
+// court's output byte-identical.
+func MergeFor(measures []Measure, spaces []Space, snaps []Snapshot, comparability json.RawMessage, schema, comparator string, nowUnix int64) (Receipt, error) {
 	seen := make(map[string]bool, len(measures))
 	rows := make([]Row, 0, len(measures))
 	for i, m := range measures {
@@ -281,14 +300,14 @@ func Merge(measures []Measure, spaces []Space, snaps []Snapshot, comparability j
 		return a.Epoch < b.Epoch
 	})
 	return Receipt{
-		Schema:          ReceiptSchema,
+		Schema:          schema,
 		GeneratedAtUnix: nowUnix,
-		Note: "A shared, deterministic driver (cmd/retentionbench) drove two systems on the same machine, same " +
-			"device, same container caps: Btrfs with a read-only snapshot after every epoch, and OrFS-GO, which " +
-			"retains every committed transition in its authoritative log with no extra snapshots. This receipt is " +
-			"data, not a leaderboard: rows are keyed by {system, kind, state, epoch, writers, readers, block_size} " +
-			"and are never ranked across incomparable coordinates. Read the comparability block before drawing any " +
-			"conclusion.",
+		Note: fmt.Sprintf("A shared, deterministic driver (cmd/retentionbench) drove two systems on the same machine, same "+
+			"device, same container caps: %s with a read-only snapshot after every epoch, and OrFS-GO, which "+
+			"retains every committed transition in its authoritative log with no extra snapshots. This receipt is "+
+			"data, not a leaderboard: rows are keyed by {system, kind, state, epoch, writers, readers, block_size} "+
+			"and are never ranked across incomparable coordinates. Read the comparability block before drawing any "+
+			"conclusion.", comparator),
 		Comparability: comparability,
 		Rows:          rows,
 		Space:         spaces,

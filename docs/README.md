@@ -46,6 +46,7 @@ capability, it is backed by code and, where a behaviour is claimed, by a court i
 | [`../courts/auditsink/dashboard.json`](../courts/auditsink/dashboard.json) | The 5-panel audit-sink Grafana dashboard (bytes+amplification, barrier p50/p99, batch size, breach/quarantine rate, verify failures) |
 | [`../courts/oss-compare/README.md`](../courts/oss-compare/README.md) | The open-source storage head-to-head court (step 2: OrFS-GO vs OrFS-Rust vs SeaweedFS FUSE): the shared deterministic driver and the comparability rules, including the not-comparable durability/data-path axes |
 | [`../courts/retention-btrfs/README.md`](../courts/retention-btrfs/README.md) | The Btrfs retained-snapshots retention court: one epoch workload, a read-only snapshot per epoch, and the physical-space economics of retaining every state (vs the OrFS-GO log) |
+| [`../courts/retention-zfs/README.md`](../courts/retention-zfs/README.md) | The OpenZFS retained-snapshot retention court (the fourth system): the same axes as the Btrfs court, **SKIPPED** here because the host has no `/dev/zfs` and no zfs kernel module (host module load is out of scope) |
 
 ## The one rule
 

@@ -821,6 +821,44 @@ readers, block_size}`, and two rows are comparable only at the same coordinate
 and only under the caveats above. The receipt is
 `evidence/retention-btrfs.json` (schema `orfs.retention.btrfs.v1`).
 
+## 7k. Retention court: OpenZFS snapshots vs the OrFS-GO log (SKIPPED on this host)
+
+Court: `scripts/retention-zfs-court.sh` + `cmd/retentionbench` (the shared driver,
+extended with a `zfs` space/snapshot kind) + `cmd/retentionsummary`, run inside a
+privileged court container by `scripts/container-retention-zfs.sh`. Design and the
+comparability rules:
+[`../courts/retention-zfs/README.md`](../courts/retention-zfs/README.md).
+
+This is the **fourth system** for the §7j retention question, on the same axes and
+the same driver: OpenZFS would retain every committed state with `zfs snapshot`, a
+read-only CoW snapshot of a dataset, and the court would account physical vs
+logical bytes from `zfs list -o used,referenced,logicalused,logicalreferenced`.
+**It is SKIPPED on this host, and no number is published** — because none was
+measured.
+
+OpenZFS is an out-of-tree **kernel module**; `zpool`/`zfs` cannot create, import,
+or even query a pool without it, and loading a kernel module is a host-level change
+and out of scope ([`LIMITATIONS.md`](LIMITATIONS.md) §14). The court probes first
+and records the evidence in `evidence/retention-zfs.json` (schema
+`orfs.retention.zfs.v1`), which carries `status: "skipped"`, a `feasibility` block
+(the commands it ran and their verbatim output), a `comparability`/`not_comparable`
+block identical in shape to §7j's, and an `arms` block. The verbatim finding on
+this host:
+
+| probe | output |
+| --- | --- |
+| `ls -l /dev/zfs` | `ls: cannot access '/dev/zfs': No such file or directory` (exit 2) |
+| `grep -w zfs /proc/modules` | *(empty; exit 1)* |
+| `grep -w zfs /proc/filesystems` | *(empty; exit 1)* |
+| `modprobe -n zfs` (query only; never loads) | `modprobe: FATAL: Module zfs not found in directory /lib/modules/7.2.9-2-cachyos` (exit 1) |
+| `zpool create -f -m none orfsretprobe <64 MiB file vdev>` | `The ZFS modules are not loaded. Try running '/sbin/modprobe zfs' as root to load them.` (exit 1) |
+
+The court image ships the `zpool`/`zfs` userspace tools (`zfsutils-linux
+2.1.11`), so the blocker is the kernel module, not the tooling: `zpool` refuses to
+act without it, and a **file-backed vdev** needs the module just as a block-device
+vdev does, so there is no container-only path. This is a precise `SKIPPED` naming
+exactly what is missing, not a choice and not a false pass.
+
 ## 8. The frontier: measured versus not yet measured
 
 Measured today (all bounded, laboratory conditions):
@@ -856,7 +894,8 @@ Explicitly not yet measured (absence is deliberate, not implied):
 | F2 FUSE-over-`io_uring` transport | **not reachable from pure Go via go-fuse** — the kernel supports it (probed live), the linked library does not; the measured F0 comparison is published (`TRANSPORT.md`, §6b) |
 | Multi-day amplification curve; profile selection by measured worth | not run |
 | Mount latency after a large (2^30-byte) history | not run (`OPERATIONS.md` §3) |
-| Open-source head-to-head, later steps | step 2 ships (OrFS-GO vs OrFS-Rust vs SeaweedFS FUSE, §7i); Btrfs read-only snapshots ship as the retention court (§7j); OpenZFS is the next comparator, on the same driver and the same rules |
+| Open-source head-to-head, later steps | step 2 ships (OrFS-GO vs OrFS-Rust vs SeaweedFS FUSE, §7i); Btrfs read-only snapshots ship as the retention court (§7j); OpenZFS ships as the fourth retention court but is **SKIPPED here** (no `/dev/zfs`, no zfs kernel module; §7k) |
+| OpenZFS retention court (fourth system) | **SKIPPED** — the host has no `/dev/zfs` and no zfs kernel module reachable from a container; `zpool create` on a file-backed vdev reports `The ZFS modules are not loaded`. Loading the module is a host-level change and is out of scope, so the court records the feasibility evidence and publishes no number (§7k) |
 
 No performance superiority is claimed beyond the measured planner p50 figure and
 the inode-spine measurements. The Go-runtime court measures the daemon's own

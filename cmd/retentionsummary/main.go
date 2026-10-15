@@ -26,6 +26,8 @@ import (
 
 func main() {
 	comparability := flag.String("comparability", "", "comparability block JSON (verbatim)")
+	schema := flag.String("schema", retention.ReceiptSchema, "receipt schema to stamp (default the Btrfs court's)")
+	comparator := flag.String("comparator", "Btrfs", "snapshot-retaining comparator name (Btrfs | OpenZFS)")
 	out := flag.String("o", "", "output path (default stdout)")
 	flag.Parse()
 
@@ -92,22 +94,39 @@ func main() {
 		}
 	}
 
-	rec, err := retention.Merge(measures, spaces, snaps, comp, time.Now().Unix())
+	rec, err := retention.MergeFor(measures, spaces, snaps, comp, *schema, *comparator, time.Now().Unix())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "retentionsummary: %v\n", err)
 		os.Exit(1)
 	}
-	rec.Method = "One defined, bounded epoch workload (append 4 KiB records with write(2)+fsync(2) per " +
-		"record) drives both systems. The Btrfs arm takes a read-only snapshot after every epoch, so every " +
-		"committed state is retained; the OrFS-GO arm takes no snapshots, because it retains every committed " +
-		"transition in its authoritative log. Reads are block-aligned uniform random preads of the current state " +
-		"and of each retained snapshot. Space is accounted from `btrfs filesystem usage`/`btrfs filesystem du` and " +
-		"from the authoritative bytes of the OrFS volume. Latencies are exact observed samples."
-	rec.Notes = []string{
-		"Every row is one bounded arm of cmd/retentionbench against a directory on this machine.",
-		"Read the comparability block before comparing any two rows; a row that could not be measured the same way is recorded as a caveat, not a pass or a parity claim.",
-		"The receipt deliberately carries no ranking: two rows are comparable only at the same {kind, state, epoch, writers, readers, block_size} and under the listed configuration differences.",
-		"Btrfs retains historical states as read-only snapshots; OrFS-GO retains them in its authoritative log and does not serve named historical roots in this build, so the historical-state read axis is Btrfs-only (recorded as not comparable).",
+	switch *comparator {
+	case "OpenZFS":
+		rec.Method = "One defined, bounded epoch workload (append 4 KiB records with write(2)+fsync(2) per " +
+			"record) drives both systems. The OpenZFS arm takes a read-only snapshot after every epoch, so every " +
+			"committed state is retained; the OrFS-GO arm takes no snapshots, because it retains every committed " +
+			"transition in its authoritative log. Reads are block-aligned uniform random preads of the current state " +
+			"and of each retained snapshot. Space is accounted from " +
+			"`zfs list -o used,referenced,logicalused,logicalreferenced` and from the authoritative bytes of the OrFS " +
+			"volume. Latencies are exact observed samples."
+		rec.Notes = []string{
+			"Every row is one bounded arm of cmd/retentionbench against a directory on this machine.",
+			"Read the comparability block before comparing any two rows; a row that could not be measured the same way is recorded as a caveat, not a pass or a parity claim.",
+			"The receipt deliberately carries no ranking: two rows are comparable only at the same {kind, state, epoch, writers, readers, block_size} and under the listed configuration differences.",
+			"OpenZFS retains historical states as read-only snapshots; OrFS-GO retains them in its authoritative log and does not serve named historical roots in this build, so the historical-state read axis is OpenZFS-only (recorded as not comparable).",
+		}
+	default:
+		rec.Method = "One defined, bounded epoch workload (append 4 KiB records with write(2)+fsync(2) per " +
+			"record) drives both systems. The Btrfs arm takes a read-only snapshot after every epoch, so every " +
+			"committed state is retained; the OrFS-GO arm takes no snapshots, because it retains every committed " +
+			"transition in its authoritative log. Reads are block-aligned uniform random preads of the current state " +
+			"and of each retained snapshot. Space is accounted from `btrfs filesystem usage`/`btrfs filesystem du` and " +
+			"from the authoritative bytes of the OrFS volume. Latencies are exact observed samples."
+		rec.Notes = []string{
+			"Every row is one bounded arm of cmd/retentionbench against a directory on this machine.",
+			"Read the comparability block before comparing any two rows; a row that could not be measured the same way is recorded as a caveat, not a pass or a parity claim.",
+			"The receipt deliberately carries no ranking: two rows are comparable only at the same {kind, state, epoch, writers, readers, block_size} and under the listed configuration differences.",
+			"Btrfs retains historical states as read-only snapshots; OrFS-GO retains them in its authoritative log and does not serve named historical roots in this build, so the historical-state read axis is Btrfs-only (recorded as not comparable).",
+		}
 	}
 
 	blob, _ := json.MarshalIndent(rec, "", "  ")

@@ -1,0 +1,96 @@
+{
+  "schema": "orfs.retention.zfs.v1",
+  "status": "skipped",
+  "measured": false,
+  "generated_at_unix": 1792024240,
+  "note": "OpenZFS is the fourth retention comparator (after the Btrfs court in evidence/retention-btrfs.json). This run is SKIPPED: OpenZFS is an out-of-tree kernel module and this environment has neither a /dev/zfs device nor a zfs module reachable from a container. No number is published, because none was measured. The feasibility block records the exact commands and their verbatim output so the finding is reproducible.",
+  "method": "None. No workload ran: the shared driver (cmd/retentionbench) is only invoked once OpenZFS is reachable.",
+  "skip": {
+    "reason": "no /dev/zfs and no zfs kernel module reachable from a container; host module load is out of scope",
+    "zfs_device_present": false,
+    "zpool_usable": false,
+    "module_load_is_a_host_change": true,
+    "kernel": "Linux 7.2.9-2-cachyos",
+    "zpool_binary": "/usr/sbin/zpool",
+    "zfs_binary": "/usr/sbin/zfs",
+    "zpool_version_output": "The ZFS modules are not loaded. Try running '/sbin/modprobe zfs' as root to load them.",
+    "zfsutils_linux_version": "2.1.11-1+deb12u1"
+  },
+  "feasibility": {
+    "conclusion": "OpenZFS is not usable in this environment: the host kernel has no zfs module (modprobe cannot find one and /proc/modules lists none) and there is no /dev/zfs device, so a container cannot reach a ZFS pool and a privileged container cannot create one on a file-backed vdev. The zpool/zfs userspace tools are present in the court image (zfsutils-linux) but refuse to act without the module. Loading a kernel module is a host-level change and is out of scope for this repository, so this is OUT OF SCOPE, not a choice.",
+    "commands": [
+    {"cmd": "ls -l /dev/zfs", "exit_code": 2, "output": "ls: cannot access '/dev/zfs': No such file or directory"},
+    {"cmd": "grep -w zfs /proc/modules", "exit_code": 1, "output": ""},
+    {"cmd": "grep -w zfs /proc/filesystems", "exit_code": 1, "output": ""},
+    {"cmd": "command -v zpool", "exit_code": 0, "output": "/usr/sbin/zpool"},
+    {"cmd": "command -v zfs", "exit_code": 0, "output": "/usr/sbin/zfs"},
+    {"cmd": "modprobe -n zfs (query only)", "exit_code": 1, "output": "modprobe: FATAL: Module zfs not found in directory /lib/modules/7.2.9-2-cachyos"},
+    {"cmd": "zpool create -f -m none orfsretprobe <64 MiB file vdev>", "exit_code": 1, "output": "The ZFS modules are not loaded. Try running '/sbin/modprobe zfs' as root to load them."}
+    ]
+  },
+  "comparability": {
+    "same_machine": true,
+    "container": {
+      "caps": {
+        "memory": "2g",
+        "memory_swap": "2g",
+        "cpus": "4",
+        "pids_limit": "1024"
+      },
+      "nproc": "16",
+      "kernel": "Linux 7.2.9-2-cachyos",
+      "comparator_filesystem": "OpenZFS (file-backed zpool vdev; UNAVAILABLE — see skip)"
+    },
+    "question": "Can a system retain every committed historical transition while achieving comparable tail latency, throughput and physical-space economics?",
+    "workload": {
+      "epochs": 8,
+      "writers": 1,
+      "records_per_epoch_per_writer": 256,
+      "record_bytes": 4096,
+      "append_durability": "write(2)+fsync(2) per record (one durability barrier per record)",
+      "bounded": true
+    },
+    "systems": {
+      "OpenZFS": {
+        "ran": false,
+        "status": "skipped",
+        "retention": "read-only snapshot after every epoch (zfs snapshot)"
+      },
+      "OrFS-GO": {
+        "ran": false,
+        "status": "skipped",
+        "retention": "every committed transition retained in the authoritative log (or.log); no snapshot step"
+      }
+    },
+    "comparable_axes": [
+      "current-state append: the same defined epoch (one write(2)+fsync(2) per record) over a zpool-mounted dataset, measured at the syscall level on both systems.",
+      "current-state read: block-aligned uniform-random pread of the current committed state; OrFS-GO adds its FUSE round trip.",
+      "physical vs logical bytes: retained physical bytes per logical byte of data. OpenZFS physical is the zfs list -o used figure; OrFS-GO physical is the authoritative or.log bytes."
+    ],
+    "not_comparable": [
+      "historical-state read: OpenZFS serves it from a snapshot; OrFS-GO does not serve named historical roots in this build (docs/LIMITATIONS.md), so this axis is OpenZFS-only. The OrFS-GO current-state read serves the same newest committed bytes.",
+      "snapshot-creation cost: OrFS-GO has no snapshot step; it retains every committed transition at append time. The OpenZFS snapshot-creation row has no OrFS-GO counterpart.",
+      "snapshot extent sharing: OpenZFS snapshots share unchanged blocks copy-on-write, so a retained snapshot's used figure can be near zero. OrFS-GO's retained bytes are its appended log, which never shares extents; the two physical-bytes accounting schemes are therefore not the same computation even though both are measured.",
+      "read latency is a native-vs-FUSE comparison: the OpenZFS read is a native local filesystem read served from the page cache (no FUSE, no daemon), while the OrFS-GO read is a FUSE request plus a daemon pread on the backing. The OpenZFS read IOPS therefore does not rank the OrFS-GO read."
+    ],
+    "differences": [
+      "The OpenZFS arm writes directly to a dataset in a file-backed zpool; the OrFS-GO arm writes through its FUSE mount to a volume backed by its own loop-mounted btrfs image (identical to the Btrfs court, so the OrFS-GO rows stay comparable across the two courts).",
+      "The OrFS-GO append arm pays the FUSE round trip and the daemon's durability barrier; the OpenZFS arm pays only the kernel write+fsync. This difference is inherent to comparing a userspace filesystem against a kernel filesystem and is recorded, not removed.",
+      "Host-level variance (page cache state, kernel scheduler, the backing device's write cache) is not controlled beyond the shared container; run-to-run variance is expected and unquantified here."
+    ],
+    "not_ranked": true,
+    "arms": {
+      "OpenZFS": {"expected": 24, "ran": 0, "failed": 0, "skipped": true},
+      "OrFS-GO": {"expected": 16, "ran": 0, "failed": 0, "skipped": true}
+    },
+    "note": "SKIPPED, not measured: OpenZFS was unreachable (see skip/feasibility). In a measured run every expected arm must run — a lost arm FAILs the court and leaves a partial receipt, never a PASS. Here nothing was expected to run, so no arm is lost."
+  },
+  "rows": [],
+  "space": [],
+  "snapshots": [],
+  "notes": [
+    "This receipt is a SKIPPED finding, not a measurement: OpenZFS had no /dev/zfs and no reachable zfs kernel module in this environment.",
+    "The feasibility block records the exact commands run and their verbatim output, so the finding is reproducible: sh scripts/container-retention-zfs.sh",
+    "Loading the OpenZFS kernel module would be a host change and is explicitly out of scope for this repository (docs/LIMITATIONS.md)."
+  ]
+}

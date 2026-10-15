@@ -265,3 +265,39 @@ bounded, single-run workload.
 - **It is one image/version, mounted one way.** One pinned image and one mount
 configuration were measured; no tuning sweep (replication, filer store,
 `-concurrency`, RDMA) is claimed.
+
+## 14. The OpenZFS retention court is SKIPPED, not measured (no reachable kernel module)
+
+The fourth retention comparator is OpenZFS (`courts/retention-zfs/`,
+`evidence/retention-zfs.json`, `docs/BENCH.md` §7k). What **is** established:
+
+- The court exists and is wired into the pre-PR gate (SKIPPED-aware, `scripts/container-verify.sh`), it
+reuses the §7j driver and the same axes, and on a host with a reachable OpenZFS
+it would measure the same rows (current append, current read,
+historical-snapshot read, snapshot cost, physical-vs-logical bytes) under the
+same 2 GiB / 4 CPU / pids-1024 caps.
+
+What is **not** established, and is reported as a precise `SKIPPED`:
+
+- **No OpenZFS retention number exists here.** OpenZFS is an out-of-tree kernel
+module. On this host there is no `/dev/zfs`, no zfs entry in `/proc/modules` or
+`/proc/filesystems`, and `modprobe -n zfs` (a *query* only) reports `FATAL:
+Module zfs not found in directory /lib/modules/7.2.9-2-cachyos`. The court image
+ships the `zpool`/`zfs` userspace tools (`zfsutils-linux 2.1.11`), yet a
+file-backed `zpool create` fails verbatim: `The ZFS modules are not loaded. Try
+running '/sbin/modprobe zfs' as root to load them.`
+- **Loading the kernel module is a host-level change and is out of scope.** This
+repository never modifies the host (no `modprobe`, no apt on the host, no kernel
+or filesystem changes). The `SKIPPED` is therefore an environment fact, not a
+choice, and the receipt records the exact commands and their verbatim output so
+the finding is reproducible (`sh scripts/container-retention-zfs.sh`).
+- **The OpenZFS space/snapshot driver paths are unit-tested but not run
+end-to-end here**, because no reachable OpenZFS exists to run them against. They
+are the same driver the Btrfs court uses, and the Btrfs arm's behaviour is
+unchanged and pinned by tests; no OpenZFS measurement is claimed.
+- **A userspace substitute is not OpenZFS.** `zfs-fuse` (an ancient, unmaintained
+ZFS-on-FUSE port) is installable from the image's sources but is a different
+system, not the OpenZFS kernel implementation the court names, so it is not
+used; substituting it would misrepresent the result.
+- **No `zpool`/`zfs` throughput, snapshot-cost, or space-economics number is
+published.** Absence here is deliberate and explicit, never implied.

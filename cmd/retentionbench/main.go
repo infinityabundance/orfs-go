@@ -10,8 +10,8 @@
 //	prepare  -dir <mnt> [-prefix P] [-writers N]
 //	append   -dir <mnt> -system S -prefix P -writers N -records R [-record-bytes B] [-seconds S] [-epoch E] [-out F]
 //	read     -dir <mnt> -system S -state current|snapshot -read-file F -readers R -bs B -seconds S [-epoch E] [-out F]
-//	space    -kind btrfs|dir -system S -epoch E -state current|snapshot [-mnt M] [-subvol P] [-physical-dir D] [-out F]
-//	snapshot -live <subvol> -dest <path> -system S -epoch E [-out F]
+//	space    -kind btrfs|zfs|dir -system S -epoch E -state current|snapshot [-mnt M] [-subvol P] [-dataset D] [-physical-dir D] [-out F]
+//	snapshot -kind btrfs|zfs -live <subvol|dataset> -dest <path|snapname> -system S -epoch E [-out F]
 package main
 
 import (
@@ -56,8 +56,8 @@ usage:
   retentionbench prepare  -dir <mnt> [-prefix P] [-writers N]
   retentionbench append   -dir <mnt> -system S -prefix P -writers N -records R [-record-bytes B] [-seconds S] [-epoch E] [-out F]
   retentionbench read     -dir <mnt> -system S -state current|snapshot -read-file F -readers R -bs B -seconds S [-epoch E] [-out F]
-  retentionbench space    -kind btrfs|dir -system S -epoch E -state current|snapshot [-mnt M] [-subvol P] [-physical-dir D] [-out F]
-  retentionbench snapshot -live <subvol> -dest <path> -system S -epoch E [-out F]
+  retentionbench space    -kind btrfs|zfs|dir -system S -epoch E -state current|snapshot [-mnt M] [-subvol P] [-dataset D] [-physical-dir D] [-out F]
+  retentionbench snapshot -kind btrfs|zfs -live <subvol|dataset> -dest <path|snapname> -system S -epoch E [-out F]
 `)
 }
 
@@ -146,12 +146,13 @@ func runRead(args []string) int {
 func runSpace(args []string) int {
 	fs := flag.NewFlagSet("space", flag.ContinueOnError)
 	cfg := retention.SpaceConfig{}
-	fs.StringVar(&cfg.Kind, "kind", "btrfs", "btrfs | dir")
+	fs.StringVar(&cfg.Kind, "kind", "btrfs", "btrfs | zfs | dir")
 	fs.StringVar(&cfg.System, "system", "unknown", "system label")
 	fs.IntVar(&cfg.Epoch, "epoch", 0, "epoch index")
 	fs.StringVar(&cfg.State, "state", "current", "current | snapshot")
 	fs.StringVar(&cfg.Mountpoint, "mnt", "", "btrfs mount used for `btrfs filesystem usage`")
 	fs.StringVar(&cfg.Subvol, "subvol", "", "subvolume to du / logical walk")
+	fs.StringVar(&cfg.Dataset, "dataset", "", "zfs dataset or dataset@snapshot (kind zfs)")
 	fs.StringVar(&cfg.PhysicalDir, "physical-dir", "", "physical walk root (dir kind; default subvol)")
 	out := fs.String("out", "", "receipt path (default stdout)")
 	if err := fs.Parse(args); err != nil {
@@ -168,8 +169,9 @@ func runSpace(args []string) int {
 func runSnapshot(args []string) int {
 	fs := flag.NewFlagSet("snapshot", flag.ContinueOnError)
 	cfg := retention.SnapshotConfig{}
-	fs.StringVar(&cfg.Live, "live", "", "source subvolume (required)")
-	fs.StringVar(&cfg.Dest, "dest", "", "destination snapshot path (required)")
+	fs.StringVar(&cfg.Kind, "kind", "btrfs", "btrfs | zfs")
+	fs.StringVar(&cfg.Live, "live", "", "source subvolume (btrfs) or dataset (zfs) (required)")
+	fs.StringVar(&cfg.Dest, "dest", "", "destination path (btrfs) or snapshot short name (zfs) (required)")
 	fs.StringVar(&cfg.System, "system", "Btrfs", "system label")
 	fs.IntVar(&cfg.Epoch, "epoch", 0, "epoch index")
 	out := fs.String("out", "", "receipt path (default stdout)")
