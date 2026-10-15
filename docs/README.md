@@ -33,6 +33,7 @@ capability, it is backed by code and, where a behaviour is claimed, by a court i
 | [`MANIFESTATION.md`](MANIFESTATION.md) | The concealed-expansion read path: identity, certification, fallback, measured results |
 | [`SNAPSHOTS.md`](SNAPSHOTS.md) | Index checkpoints: the snapshot format, the committed-root directory, validity/fallback policy, and the measured startup curve |
 | [`LIMITATIONS.md`](LIMITATIONS.md) | Every standing non-claim, so absence is explicit |
+| [`OSS-COMPARE.md`](OSS-COMPARE.md) | The aggregate answer to "can a system retain every committed transition while matching tail latency, throughput and space economics?" — every court's result in one place, with what is and is not comparable |
 | [`SECURITY.md`](SECURITY.md) | Threat model; integrity is not authentication |
 | [`REJECTED.md`](REJECTED.md) | Designs decided against, with reasons |
 
