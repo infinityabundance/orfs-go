@@ -50,11 +50,19 @@ Working today:
 | Transport (`--transport f0 \| f0-single \| fuse-uring`) with a loud F2 fallback; F2 (`io_uring`) probed live — the kernel supports it, go-fuse exposes none (see `docs/TRANSPORT.md`) | implemented — `evidence/performance/transport.json` |
 | Operator metrics (`orfs metrics`, Prometheus text + `--json`) and an append-only WORM case study | implemented — `evidence/worm-case-study.json`, `docs/WORM.md` |
 | Audit-log sink: a `cmd/orfsaudit` JSON-event writer with a skewed 80/20 corpus, an inotify tail reader (poll fallback), a mounted immutability proof, Prometheus→Grafana, and the production story | implemented — `evidence/audit-sink.json`, `docs/AUDIT-SINK.md` |
+| Extent **structural sharing** (the Rust reference's Phase 27 `PMap`: clone O(1), write O(log E)) | implemented — `evidence/performance/append-scaling.json`, flat 1.001× (§7i) |
+| Retention court: **Btrfs read-only snapshots** vs the OrFS log (space economics of retaining every state) | implemented — `evidence/retention-btrfs.json`, `docs/BENCH.md` §7j |
+| Retention court: **real OpenZFS** in a KVM micro-VM (the host has no ZFS module and is never modified) | implemented — `evidence/retention-zfs.json`, `docs/BENCH.md` §7k |
+| **WORM S3 gateway** (`cmd/orfs-s3`): dependency-free `net/http`, SigV4, WORM DELETE→403, `/metrics`, measured against MinIO | implemented — `evidence/s3bench.json`, `docs/BENCH.md` §7l, `docs/S3-GATEWAY.md` |
 
 Honest non-claims: the **image pixel-surface pyramid is rejected, not merely
 unimplemented** (`docs/REJECTED.md`). No performance superiority is claimed; the
-FUSE tax is published in `docs/BENCH.md`. A true pure-Go F2 transport, group
-commit, and a per-read allocation court remain planned (`docs/PROGRESS.md`).
+FUSE tax is published in `docs/BENCH.md`, and so is the WORM S3 gateway's slow PUT
+path (§7l: ~57 ops/s, serialized by the namespace write lock). A true pure-Go F2
+transport remains unimplemented and named unreachable (`docs/TRANSPORT.md`);
+taking `internal/namespace` off the write critical path — so the log's group
+committer can batch writes instead of seeing one transaction at a time — is the
+next piece of work (`docs/LIMITATIONS.md` §15).
 
 ## Quick start
 

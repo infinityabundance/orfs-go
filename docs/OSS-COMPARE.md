@@ -72,7 +72,17 @@ transitions.
 | | retained states | mechanism | physical / logical (8 MiB logical) | per-snapshot exclusive bytes | snapshot create |
 | --- | ---: | --- | ---: | ---: | ---: |
 | **Btrfs** | 8 | read-only snapshot after each epoch | **1.246×** (10.45 MiB) | **0** (all extents shared) | 673.6 / **730.3** / 810.6 µs (min/median/max) |
+| **OpenZFS** | 8 | `zfs snapshot` after each epoch, inside a KVM micro-VM | not ranked — compression-aware and guest-inflated | **0** (all blocks shared) | **~7.4 ms** (guest) |
 | **OrFS-GO** | 8 | none — every transition is already in the log | **1.116×** (9.36 MiB) | n/a | n/a |
+
+The OpenZFS row is **real OpenZFS** (`zfs-kmod 2.2.2`) but measured inside a
+384 MiB KVM guest on a virtio disk, and its physical figure is compression-aware
+(`compression=lz4` is the default on a new dataset), so its numbers are neither
+comparable to the container courts nor rankable against OrFS's uncompressed
+`or.log`. What it establishes is the same retention point as Btrfs: a read-only
+ZFS snapshot costs almost nothing to create, shares all its blocks, and a
+**historical snapshot read is exactly as fast as a current read**
+(`docs/BENCH.md` §7k).
 
 Read this carefully:
 
@@ -164,6 +174,31 @@ daemon does not scale like a native stack. The FUSE tax is published rather than
 hidden. A native CoW filesystem's read row is not a fair comparator for a FUSE
 filesystem's read row, which is why the Btrfs and OpenZFS courts compare
 **retention economics**, not read latency.
+
+### 4.4 The WORM S3 endpoint (`cmd/orfs-s3`) — and why it is not yet fast
+
+A minimal, dependency-free WORM S3 gateway now exists so standard clients can
+write to OrFS without FUSE (`docs/BENCH.md` §7l, `docs/S3-GATEWAY.md`). Measured
+with one client, 4 KiB objects, `-default-retention forever`, unique keys:
+
+| op | concurrency | ops/s | p50 | p99 |
+| --- | ---: | ---: | ---: | ---: |
+| GET | 1 | 24,889 | 36.6 µs | 93.1 µs |
+| GET | 64 | **87,377** | 326.7 µs | 2.93 ms |
+| PUT | 1 | **57.4** | 17.0 ms | 21.6 ms |
+| PUT | 64 | **58.2** | 1.10 s | 1.11 s |
+
+**The gateway does not turn the audit sink's 149 rec/s into 233k ops/s, and the
+receipt says so.** PUT is ~57 ops/s and does not improve with concurrency, because
+`internal/namespace` holds its write mutex across every `Publish`, so writes
+serialize and the log's group committer never sees a batch
+(`orfs_group_commit_batch_size` stays 1). It is *not* the manifested read path:
+measured `-manifest` on vs off, every PUT row is unchanged. GET is genuinely fast;
+the append path is the problem, and the fix is taking the namespace off the write
+critical path — not a gateway flag. The WORM guarantee itself is proven
+end-to-end: retain PUT 200, DELETE **403 `AccessDenied`**, byte-identical re-read,
+legal hold likewise. MinIO could not be compared (its public images are no longer
+pullable; the receipt records that).
 
 ## 5. What OrFS-GO does *not* win
 
