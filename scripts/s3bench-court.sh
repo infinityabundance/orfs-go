@@ -27,7 +27,14 @@ MINIO=${MINIO:-/out/minio}
 EVID=${ORFS_EVIDENCE_DIR:-/evidence}
 
 DURATION=${DURATION:-5}
+# Concurrency points. The 4 KiB audit-record size (and the get/mixed arms) sweep
+# an extra high-concurrency point, 512, where the log's group committer can
+# amortise one durability barrier across a full batch; the 1 MiB PUT arm sweeps
+# only $CONCURRENCY, because a PUT body is buffered whole and 512 concurrent 1 MiB
+# bodies exceed the court's 2 GiB memory cap (the gateway is OOM-killed).
 CONCURRENCY=${CONCURRENCY:-"1 64"}
+CONCURRENCY_SMALL=${CONCURRENCY_SMALL:-"1 64 512"}
+SMALL_OBJECT_MAX=${SMALL_OBJECT_MAX:-65536}
 OBJECT_BYTES=${OBJECT_BYTES:-"4096 1048576"}
 GET_BYTES=${GET_BYTES:-4096}
 SEED=${SEED:-1}
@@ -40,6 +47,10 @@ S3BENCH_OUT=${S3BENCH_OUT:-$EVID/s3bench.json}
 # omits it, so the two configurations can be measured separately as the design
 # requires (the manifested body publication is a per-PUT cost worth isolating).
 GW_MANIFEST=${GW_MANIFEST:-on}
+# The log's group-commit bounds (transactions per barrier / max wait). Recorded
+# in the receipt so a batch size is read against the bound it was produced under.
+GC_BOUND=${ORFS_GROUP_COMMIT_BATCH:-128 (default)}
+GC_WAIT_MS=${ORFS_GROUP_COMMIT_WAIT_MS:-2 (default)}
 
 CAP_MEM_LIMIT=${CAP_MEM_LIMIT:-2g}
 CAP_MEMSWAP_LIMIT=${CAP_MEMSWAP_LIMIT:-2g}
@@ -88,6 +99,43 @@ json_escape() {
   sed -e 's/\x1b\[[0-9;]*[A-Za-z]//g' \
     | LC_ALL=C tr -c '[:print:]' ' ' \
     | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/^ *//' -e 's/ *$//'
+}
+
+# --- group-commit batch observation -----------------------------------------
+#
+# The gateway's /metrics exposes the log's group-commit counters (internal/
+# metrics via internal/observe): orfs_group_commit_batch_size{stat="last"|"avg"}
+# (transactions per durability barrier) and orfs_fsync_latency_seconds_count (the
+# barriers taken). Scraping before and after a PUT arm lets the receipt record
+# the batch size that arm actually achieved, rather than assuming it.
+scrape_metrics() { # $1 = destination JSON; succeeds iff the file has content
+  "$S3LOAD" -endpoint "$GW_ADDR" -mode metrics -out "$1" >/dev/null 2>&1 && [ -s "$1" ]
+}
+# metric_num <file> <prometheus-name-including-labels>
+metric_num() {
+  sed -n "s/.*$2\": \([0-9.eE+-]*\).*/\1/p" "$1" 2>/dev/null | tail -n 1
+}
+gc_last()     { metric_num "$1" 'orfs_group_commit_batch_size{stat=\\"last\\"}'; }
+gc_avg()      { metric_num "$1" 'orfs_group_commit_batch_size{stat=\\"avg\\"}'; }
+gc_barriers() { metric_num "$1" 'orfs_fsync_latency_seconds_count'; }
+gc_puts()     { metric_num "$1" 'orfs_s3_requests_total{op=\\"PutObject\\"}'; }
+
+# gc_arm <label> <pre-metrics> <post-metrics> writes one group_commit row for a
+# PUT arm. A missing scrape is recorded as unavailable, never as a number.
+gc_arm() {
+  label=$1; pre=$2; post=$3
+  out="$ARMS/OrFS-S3-gc-$label.json"
+  if [ -z "$pre" ] || [ -z "$post" ]; then
+    printf '{\n  "op": "group_commit",\n  "arm": "OrFS-S3 %s",\n  "status": "unavailable",\n  "note": "the gateway /metrics scrape before or after this arm failed; no batch number is claimed"\n}\n' "$label" > "$out"
+    return 0
+  fi
+  lb=$(gc_last "$pre");  la=$(gc_last "$post")
+  ab=$(gc_avg "$pre");   aa=$(gc_avg "$post")
+  bb=$(gc_barriers "$pre"); ba=$(gc_barriers "$post")
+  pb=$(gc_puts "$pre");  pa=$(gc_puts "$post")
+  per=$(awk -v pb="${pb:-0}" -v pa="${pa:-0}" -v bb="${bb:-0}" -v ba="${ba:-0}" 'BEGIN{d=ba-bb; if(d>0) printf "%.3f", (pa-pb)/d; else printf "0"}')
+  printf '{\n  "op": "group_commit",\n  "arm": "OrFS-S3 %s",\n  "batch_size_last_before": %s,\n  "batch_size_last_after": %s,\n  "batch_size_avg_before": %s,\n  "batch_size_avg_after": %s,\n  "barriers_before": %s,\n  "barriers_after": %s,\n  "put_requests_before": %s,\n  "put_requests_after": %s,\n  "put_commits_per_barrier": %s,\n  "note": "scraped from the live gateway /metrics before and after the arm. barriers* is orfs_fsync_latency_seconds_count; put_commits_per_barrier is the PUT requests the arm completed divided by the durability barriers it took. The gateway commits a PUT as one authoritative transaction, so a value above 1 is the log group committer batching concurrent PUTs behind one barrier."\n}\n' \
+    "$label" "${lb:-0}" "${la:-0}" "${ab:-0}" "${aa:-0}" "${bb:-0}" "${ba:-0}" "${pb:-0}" "${pa:-0}" "$per" > "$out"
 }
 
 ARM_FAILS=0
@@ -145,14 +193,23 @@ run_arm() {
 
 run_gateway() {
   for b in $OBJECT_BYTES; do
-    for c in $CONCURRENCY; do
-      run_arm "OrFS-S3" "$GW_ADDR" "$GW_ACCESS" "$GW_SECRET" put "$c" "$b" "put-c$c-b$b" || true
+    cs=$CONCURRENCY
+    if [ "$b" -le "$SMALL_OBJECT_MAX" ]; then cs=$CONCURRENCY_SMALL; fi
+    for c in $cs; do
+      label="put-c$c-b$b"
+      pre="$WORK/gc-pre-$label.json"
+      post="$WORK/gc-post-$label.json"
+      rm -f "$pre" "$post"
+      scrape_metrics "$pre" || pre=""
+      run_arm "OrFS-S3" "$GW_ADDR" "$GW_ACCESS" "$GW_SECRET" put "$c" "$b" "$label" || true
+      scrape_metrics "$post" || post=""
+      gc_arm "$label" "$pre" "$post"
     done
   done
-  for c in $CONCURRENCY; do
+  for c in $CONCURRENCY_SMALL; do
     run_arm "OrFS-S3" "$GW_ADDR" "$GW_ACCESS" "$GW_SECRET" get "$c" "$GET_BYTES" "get-c$c-b$GET_BYTES" || true
   done
-  for c in $CONCURRENCY; do
+  for c in $CONCURRENCY_SMALL; do
     run_arm "OrFS-S3" "$GW_ADDR" "$GW_ACCESS" "$GW_SECRET" mixed "$c" "$GET_BYTES" "mixed-c$c-b$GET_BYTES" || true
   done
   run_arm "OrFS-S3" "$GW_ADDR" "$GW_ACCESS" "$GW_SECRET" worm 1 "$GET_BYTES" "worm" || true
@@ -238,7 +295,8 @@ cat > "$HDR" <<EOF
     },
     "workload": {
       "duration_seconds": ${DURATION},
-      "concurrency": [$(echo "$CONCURRENCY" | tr ' ' ',')],
+      "concurrency": [$(echo "$CONCURRENCY_SMALL" | tr ' ' ',')],
+      "concurrency_note": "the 4 KiB PUT arm and the get/mixed arms sweep ${CONCURRENCY_SMALL}; the 1 MiB PUT arm sweeps ${CONCURRENCY} because 512 concurrent 1 MiB bodies exceed the 2 GiB cap (the gateway buffers a whole PUT body)",
       "put_object_bytes": [$(echo "$OBJECT_BYTES" | tr ' ' ',')],
       "get_object_bytes": ${GET_BYTES},
       "seed": ${SEED},
@@ -252,7 +310,8 @@ cat > "$HDR" <<EOF
         "gateway": "in-process S3 over an append-only OrFS volume; no FUSE in the data path",
         "worm": "-default-retention forever; DELETE refused while locked",
         "manifested_reads": "${GW_MANIFEST} (-manifest)",
-        "group_commit": "-group-commit (ORFS_GROUP_COMMIT=1)",
+        "group_commit": "-group-commit (ORFS_GROUP_COMMIT=1); batch bound ${GC_BOUND} transactions, max wait ${GC_WAIT_MS} ms",
+        "put_transactions": "one authoritative transaction per PUT (namespace.CreateFileData / ReplaceFileData), so a PUT takes one durability barrier",
         "daemon_stderr": "${GW_TAIL}"
       },
       "MinIO": {
@@ -265,7 +324,7 @@ cat > "$HDR" <<EOF
     "not_comparable": [
       "durability: MinIO is a client/server object store with its own on-disk format and fsync policy; the OrFS-S3 gateway appends to an OrFS authoritative log. The two do not offer the same durability contract and their rates are not a like-for-like durability ranking.",
       "data path: the gateway serves in-process from one local append-only volume; MinIO serves over its HTTP server from its own storage engine. Same client, same operations, different systems underneath.",
-      "the gateway does NOT get batched group commit: internal/namespace holds its write mutex across every Publish, so concurrent PUTs never overlap and orfs_group_commit_batch_size stays 1. The gateway win measured here is the removed FUSE round trip, not a batched 233k-ops/s path."
+      "batching is a property of the gateway's own authoritative log, not of the S3 protocol: the group_commit rows record, per PUT arm, the batch size that arm's live /metrics measured (transactions per durability barrier) and the PUT rate divided by the barriers taken. A single-machine, single-volume result; not comparable to MinIO's storage engine."
     ],
     "not_ranked": true,
     "arms": {

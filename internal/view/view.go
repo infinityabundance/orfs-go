@@ -327,6 +327,19 @@ func (v *View) ParentOf(child uint64) (uint64, bool) {
 	return parent, found
 }
 
+// NameCount counts the directory entries naming an inode (its link count as the
+// committed namespace records it). It is read-only and lock-free.
+func (v *View) NameCount(child uint64) int {
+	n := 0
+	v.dentry.walk(func(_ index.DentryKey, c uint64) bool {
+		if c == child {
+			n++
+		}
+		return true
+	})
+	return n
+}
+
 // cloneInode returns a private copy of an inode whose maps and slices the view
 // owns, so a later mutation of the writer's inode cannot alter a published view.
 func cloneInode(in *index.Inode) *index.Inode {

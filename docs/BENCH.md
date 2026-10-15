@@ -944,16 +944,26 @@ Run:
 ```sh
 sh scripts/container-s3bench.sh                        # -manifest on (default)
 GW_MANIFEST=off S3BENCH_OUT=/evidence/s3bench-nomanifest.json sh scripts/container-s3bench.sh
+# the same court at the log's own default group-commit bound (128, not 512):
+ORFS_GROUP_COMMIT_BATCH=128 S3BENCH_OUT=/evidence/s3bench-bound128.json sh scripts/container-s3bench.sh
 ```
 
 Receipts: `evidence/s3bench.json` and `evidence/s3bench-nomanifest.json` (schema
-`orfs.performance.s3bench.v1`). Measured (one bounded run, 4 KiB objects unless
-stated, `-default-retention forever`, unique keys per arm):
+`orfs.performance.s3bench.v1`), with `evidence/s3bench-bound128.json` (the log's
+default batch bound, for the bound's effect) and `evidence/s3bench-on-repeat.json`
+(a second run of the default configuration, because this host's spread is large).
+Measured (one bounded run per receipt, `-default-retention forever`, unique keys
+per arm; the 4 KiB arm sweeps 1/64/512 clients, the 1 MiB arm 1/64 — 512
+concurrent 1 MiB PUT bodies exceed the 2 GiB court cap and OOM the gateway):
+
+**Before** (the receipt at the previous commit — `internal/namespace` took its
+write mutex across every `Publish`, so the log's group committer never saw a
+batch):
 
 | op | concurrency | object | ops/s | p50 | p99 |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| GET | 1 | 4 KiB | **24,889** | 36.6 µs | 93.1 µs |
-| GET | 64 | 4 KiB | **87,377** | 326.7 µs | 2.93 ms |
+| GET | 1 | 4 KiB | 24,889 | 36.6 µs | 93.1 µs |
+| GET | 64 | 4 KiB | 87,377 | 326.7 µs | 2.93 ms |
 | PUT | 1 | 4 KiB | **57.4** | 17.0 ms | 21.6 ms |
 | PUT | 64 | 4 KiB | **58.2** | 1.10 s | 1.11 s |
 | PUT | 1 | 1 MiB | 21.4 | 28.1 ms | 240 ms |
@@ -961,29 +971,67 @@ stated, `-default-retention forever`, unique keys per arm):
 | mixed | 1 | 4 KiB | 114.3 | 16.6 ms | 21.6 ms |
 | mixed | 64 | 4 KiB | 104.2 | 914 ms | 1.11 s |
 
-**WORM correctness arm (`-mode worm`) — all as expected:** PUT with a finite
-retention returns 200; DELETE returns **403 `AccessDenied`**; the object still
-GETs back 200 with byte-identical content; the same for a legal hold;
-`all_expected: true`.
+with `orfs_group_commit_batch_size{stat="last"|"avg"} = 1` on every arm.
 
-**The honest headline: the gateway does NOT turn 149 rec/s into 233k ops/s.**
+**After** (`evidence/s3bench.json`, `-manifest` on, group-commit batch bound 512):
 
-- **PUT is ~57 ops/s single-client (p50 ~17 ms), and concurrency does not help**
-  (58 ops/s at 64 clients, p50 1.10 s). That is the namespace write mutex made
-  visible: `internal/namespace` holds `ns.mu` across every `Publish`, so
-  concurrent PUTs serialize and `orfs_group_commit_batch_size` stays 1. The
-  gateway is *slower* per append than the FUSE audit sink's 149 rec/s, because it
-  pays per-PUT transaction work (object inode + dentry + WORM xattr + data extent)
-  and cannot batch.
-- **It is not the manifested read path.** The `-manifest` off receipt is
-  statistically the same on every PUT row (56.9 and 57.6 ops/s vs 57.4 and 58.2);
-  the EKBLOOM publication is not the PUT bottleneck.
-- **GET is genuinely fast** (87k ops/s at 64 clients) — the read path is not the
+| op | concurrency | object | ops/s | p50 | p99 | PUTs per barrier |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| GET | 1 | 4 KiB | 20,439 | 44.1 µs | 113.7 µs | — |
+| GET | 64 | 4 KiB | 78,346 | 360 µs | 3.33 ms | — |
+| GET | 512 | 4 KiB | 54,314 | 4.70 ms | 62.4 ms | — |
+| PUT | 1 | 4 KiB | **167.7** | 5.81 ms | 7.56 ms | 1.0 |
+| PUT | 64 | 4 KiB | **4,227** | 8.40 ms | 17.1 ms | 57.7 |
+| PUT | 512 | 4 KiB | **5,822** | 41.8 ms | 1.03 s | 258.3 |
+| PUT | 1 | 1 MiB | 40.1 | 16.6 ms | 87.1 ms | 1.0 |
+| PUT | 64 | 1 MiB | 101.6 (byte-capped) | 265 ms | 1.58 s | 26.6 |
+| mixed | 1 | 4 KiB | 322.4 | 5.54 ms | 7.70 ms | — |
+| mixed | 64 | 4 KiB | 7,462 | 6.80 ms | 35.2 ms | — |
+| mixed | 512 | 4 KiB | **10,133** | 26.7 ms | 910 ms | — |
+
+The group-commit batch is no longer 1: scraped from the live `/metrics` around
+the PUT arms, `orfs_group_commit_batch_size{stat="last"}` reaches **64** (4 KiB,
+64 clients), **438** (4 KiB, 512 clients) and **17** (1 MiB, 64 clients), and the
+per-arm average grows 1 → 18.2 (c=64) and 18.2 → 40.4 (c=512). `-manifest` off
+(`evidence/s3bench-nomanifest.json`, same bound) measures PUT **4 KiB** at 166.9
+(c=1), **5,154** (c=64) and **7,611** (c=512) ops/s, again with a batch of 64/77.
+At the log's **default** bound 128 (`evidence/s3bench-bound128.json`) the same
+arms measure 105.6 / **1,957** / **3,838** ops/s with batches capped at
+128 (127.3 PUTs per barrier at c=512).
+
+**The honest headline: the barrier now batches, and PUT improved ~70–130×, but
+the court does NOT show a reproducible >10k ops/s PUT arm.**
+
+- **The write path is off the lock.** `internal/namespace` now stages each
+  mutation (validate + build the records), reserves the namespace keys it read,
+  releases the write lock, publishes, and advances the live index in commit-root
+  order from the log's commit hook. Concurrent, non-conflicting PUTs therefore
+  reach the group committer together: `orfs_group_commit_batch_size` is **1**
+  before and **up to 438** after, and PUT 4 KiB goes 58.2 → 4,227 ops/s at 64
+  clients and → 5,822 at 512 (a **72×–100×** gain). Single-client PUT goes
+  57.4 → 167.7 (a gap-free PUT is now one authoritative transaction, not three).
+- **>10k is measured only on the *mixed* arm.** PUT 4 KiB at 512 clients peaked
+  at 5.8k (manifest on) / 7.6k (manifest off) in the receipts above, and the
+  *mixed* PUT+GET arm at 512 clients reaches 10,133. Run-to-run spread on this
+  shared host is large: the identical PUT-c512-b4096 arm measured 5,822 and 4,906
+  in the two `evidence/s3bench.json` / `evidence/s3bench-on-repeat.json` runs at
+  bound 512, and 3,838 at bound 128. So the honest statement is a **range, not a
+  target met**: the PUT arm sustains roughly 4k–8k ops/s here.
+- **What still bounds it is the per-batch durability cost, not the lock.** With
+  258 PUTs sharing one barrier the barriers themselves are the limit: the c=512
+  arm took 123 barriers in 5.46 s (≈ 44 ms each) and the c=64 arm 367 barriers in
+  5.01 s (≈ 14 ms each) — data fsync + the watermark's own write/fsync/rename/dir
+  fsync per batch, on a disk that is 98% full and shared with other work. Even a
+  full 512-transaction batch cannot amortise a ~40 ms barrier past ~13k ops/s,
+  and the batch only fills to ~250–300 inside the 2 ms collect window. Widening
+  that window (a probed `ORFS_GROUP_COMMIT_WAIT_MS=8`) moved the c=512 arm to
+  8,081 ops/s but *dropped* c=64 to 2,681 and c=1 to 81 (the wait is added to
+  every barrier), so it was not kept as the default.
+- **It is not the manifested read path that bounds the PUT arms.** `-manifest`
+  off is faster at c=64/512 (5,154/7,611 vs 4,227/5,822) but the two are within
+  this host's run-to-run spread; the EKBLOOM publication is not the wall.
+- **GET is still fast** (78k ops/s at 64 clients) — the read path was never the
   problem.
-- So the route to a fast WORM S3 endpoint is **not** a gateway flag: it is taking
-  `namespace` off the write critical path (stage the mutation, release the lock
-  across `Publish`, and let the log's group committer batch). Until that lands,
-  this gateway is a *correct, dependency-free WORM S3 surface*, not a fast one.
 - **The MinIO comparison could not be run.** MinIO's public images are no longer
   pullable — `minio/minio` on Docker Hub answers `pull access denied ...
   repository does not exist or may require 'docker login'` and `quay.io/minio/minio`
@@ -991,13 +1039,20 @@ GETs back 200 with byte-identical content; the same for a legal hold;
   receipt records `MinIO: {ran: false, status: "unavailable"}` with that reason;
   no MinIO number is claimed.
 
+**WORM correctness arm (`-mode worm`) — all as expected:** PUT with a finite
+retention returns 200; DELETE returns **403 `AccessDenied`**; the object still
+GETs back 200 with byte-identical content; the same for a legal hold;
+`all_expected: true`.
+
 **Comparability.** The gateway and MinIO would differ on durability and data path
 (an in-process gateway over an append-only log vs a client/server object store
 over its own storage), so the receipt marks those axes `not_comparable`. Rows are
-keyed `{system, op, concurrency, object_bytes}` and never ranked. One environment
-note worth recording: on this host Docker's data root is a small tmpfs, so the
+keyed `{system, op, concurrency, object_bytes}` and never ranked. Two environment
+notes worth recording: on this host Docker's data root is a small tmpfs, so the
 court keeps its measured payload on a disk-backed bind mount (`S3WORK`) rather
-than the container overlay, or an arm hits `ENOSPC`.
+than the container overlay, or an arm hits `ENOSPC`; and that backing is a
+nearly-full, shared disk, whose fsync latency (and therefore the achievable
+batched PUT rate) varies by ~2× between runs.
 
 
 ## 8. The frontier: measured versus not yet measured

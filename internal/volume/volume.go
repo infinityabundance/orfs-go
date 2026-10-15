@@ -15,6 +15,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -89,11 +90,19 @@ type Volume struct {
 	reader *log.CanonicalReader
 	index  *index.Index
 
+	// mu guards the live index and the derived read view's construction. The log's
+	// commit hook takes it while it advances the index by the just-committed
+	// records, so the hook and a simultaneous index reader never race. Because the
+	// hook runs on the single committing goroutine, in commit-root order, the live
+	// index stays replay-equivalent no matter which caller's Publish finished
+	// first.
+	mu          sync.Mutex
+	appliedRoot uint64
+
 	// readView is the immutable read view of the committed namespace, replaced
 	// atomically at each commit boundary (after the live index has been extended
 	// by the just-committed records). Readers load it once per request and never
-	// take a lock. Commits are serialised by the single writer, so publishing a
-	// new view is a plain atomic store.
+	// take a lock. The commit hook publishes a new view as it applies.
 	readView atomic.Pointer[view.View]
 
 	// Checkpoint policy (opt-in) and the report of how the index was
@@ -106,6 +115,10 @@ type Volume struct {
 	sinceCheckpointTxns uint64
 	lastCheckpointRoot  uint64
 	mountReport         *checkpoint.Report
+
+	// cpMu serialises checkpoint publication so at most one checkpoint is in
+	// flight; the counters it guards live under mu.
+	cpMu sync.Mutex
 }
 
 // InitOptions configures volume creation.
@@ -155,6 +168,7 @@ func Init(backing string, opts InitOptions, vopts ...Option) (*Volume, error) {
 		l.Close()
 		return nil, err
 	}
+	l.SetCommitHook(v.onCommit)
 	return v, nil
 }
 
@@ -188,6 +202,9 @@ func Open(backing string, mode log.Mode, vopts ...Option) (*Volume, error) {
 		l.Close()
 		return nil, err
 	}
+	if mode == log.ReadWrite {
+		l.SetCommitHook(v.onCommit)
+	}
 	return v, nil
 }
 
@@ -207,6 +224,7 @@ func (v *Volume) buildIndex(publish bool) error {
 	v.index = idx
 	v.readView.Store(view.FromIndex(idx))
 	v.mountReport = rep
+	v.appliedRoot = v.Log.CommittedRoot()
 	v.lastCheckpointRoot = v.Log.CommittedRoot()
 	v.reader = log.NewCanonicalReader(log.Dir(v.Backing), v.Log.Extents())
 	return nil
@@ -250,10 +268,12 @@ func (v *Volume) Sync() error {
 }
 
 // Publish commits a transaction's data records, extends the live index by the
-// newly committed suffix, and (when the opt-in policy is due) writes a
-// checkpoint as a further committed transaction.
+// just-committed records, and (when the opt-in policy is due) writes a
+// checkpoint as a further committed transaction. The index advance happens in
+// the log's commit hook, in commit-root order, before this returns, so a
+// successful return means the index already reflects the transaction.
 func (v *Volume) Publish(data []*record.Record) (uint64, error) {
-	root, err := v.commit(data)
+	root, err := v.Log.Publish(data)
 	if err != nil {
 		return 0, err
 	}
@@ -261,29 +281,42 @@ func (v *Volume) Publish(data []*record.Record) (uint64, error) {
 	return root, nil
 }
 
-// commit writes one transaction and replays only the newly committed suffix
-// [prevRoot, root) into the live index, so the work per commit is proportional
-// to the transaction, never to the retained history. The replay journals the
-// keys it touches and the resulting change set is folded into a new immutable
-// read view, which is published atomically once the whole transaction has been
-// applied — so a reader sees either the whole old view or the whole new one.
-func (v *Volume) commit(data []*record.Record) (uint64, error) {
-	prevRoot := v.Log.CommittedRoot()
-	root, err := v.Log.Publish(data)
-	if err != nil {
-		return 0, err
+// onCommit is the log's commit hook: it advances the live index and republishes
+// the read view for one just-committed transaction. It runs on the single
+// committing goroutine, in commit-root order, so no data race and no rollback
+// is ever possible: the committed prefix only grows.
+func (v *Volume) onCommit(ev log.CommitEvent) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if ev.Root <= v.appliedRoot {
+		// Already applied (defensive: a hook must never be called twice for the
+		// same boundary).
+		return nil
 	}
-	extents := v.Log.Extents()
-	v.reader.UpdateExtents(extents)
 	j := index.NewJournal()
 	v.index.Journal = j
-	_, _, err = v.index.ReplayRange(log.Dir(v.Backing), extents, prevRoot, root)
-	v.index.Journal = nil
-	if err != nil {
-		return 0, err
+	off := ev.BaseOffset
+	for _, rec := range ev.Records {
+		if err := v.index.Apply(rec, off); err != nil {
+			v.index.Journal = nil
+			return err
+		}
+		v.index.CommittedRecords++
+		t, err := rec.Header.TotalLen()
+		if err != nil {
+			v.index.Journal = nil
+			return err
+		}
+		off += t
 	}
+	v.index.Journal = nil
+	if off != ev.Root || v.index.Root != ev.Root {
+		return orfserr.Corrupt("commit hook advanced the index to root %d, want %d", v.index.Root, ev.Root)
+	}
+	v.reader.UpdateExtents(v.Log.Extents())
 	v.readView.Store(v.readView.Load().WithChanges(v.index, j.Inodes, j.Dentry))
-	return root, nil
+	v.appliedRoot = ev.Root
+	return nil
 }
 
 // TakeCheckpoint writes an index checkpoint over the current committed index as
@@ -291,17 +324,28 @@ func (v *Volume) commit(data []*record.Record) (uint64, error) {
 // the snapshot reflects (the root current at write time); the record is then a
 // normal committed record inside the prefix. It never rewrites a committed byte.
 func (v *Volume) TakeCheckpoint() (uint64, error) {
+	v.cpMu.Lock()
+	defer v.cpMu.Unlock()
+	return v.takeCheckpointLocked()
+}
+
+func (v *Volume) takeCheckpointLocked() (uint64, error) {
 	if v.Log == nil {
 		return 0, orfserr.ReadOnly("no log")
 	}
+	v.mu.Lock()
+	snapRoot := v.index.Root
+	snapInodes := uint64(len(v.index.Inodes))
+	snapDentry := uint64(len(v.index.Dentry))
 	doc, digest, err := index.EncodeSnapshot(v.index)
+	v.mu.Unlock()
 	if err != nil {
 		return 0, err
 	}
 	payload := record.IndexCheckpoint{
-		Root:        v.index.Root,
-		InodeCount:  uint64(len(v.index.Inodes)),
-		DentryCount: uint64(len(v.index.Dentry)),
+		Root:        snapRoot,
+		InodeCount:  snapInodes,
+		DentryCount: snapDentry,
 		Digest:      digest,
 		IndexBytes:  doc,
 	}.Encode()
@@ -312,12 +356,14 @@ func (v *Volume) TakeCheckpoint() (uint64, error) {
 		Header:  record.Header{RecordType: record.TypeIndexCheckpoint, PayloadLength: uint64(len(payload)), InodeID: record.RootInode},
 		Payload: payload,
 	}
-	root, err := v.commit([]*record.Record{rec})
+	root, err := v.Log.Publish([]*record.Record{rec})
 	if err != nil {
 		return 0, err
 	}
+	v.mu.Lock()
 	v.lastCheckpointRoot = root
 	v.sinceCheckpointTxns = 0
+	v.mu.Unlock()
 	return root, nil
 }
 
@@ -328,6 +374,7 @@ func (v *Volume) maybeCheckpoint(root uint64) {
 	if v.cpEveryTxns == 0 && v.cpEveryBytes == 0 {
 		return
 	}
+	v.mu.Lock()
 	v.sinceCheckpointTxns++
 	due := false
 	if v.cpEveryTxns > 0 && v.sinceCheckpointTxns >= v.cpEveryTxns {
@@ -336,6 +383,7 @@ func (v *Volume) maybeCheckpoint(root uint64) {
 	if v.cpEveryBytes > 0 && root-v.lastCheckpointRoot >= v.cpEveryBytes {
 		due = true
 	}
+	v.mu.Unlock()
 	if !due {
 		return
 	}

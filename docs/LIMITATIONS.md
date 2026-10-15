@@ -310,7 +310,7 @@ What is **not** established, and must not be read from §7k:
   not bypass the page cache and QEMU is OOM-killed). Both facts are recorded in
   §7k; the second is why the court needs `ZFSVM_WORKDIR` on a disk-backed mount.
 
-## 15. The WORM S3 gateway is correct, not fast (and has no MinIO comparison)
+## 15. The WORM S3 gateway now batches its barrier, but is not a >10k ops/s PUT endpoint here
 
 The OrFS-S3 gateway (`cmd/orfs-s3`, `docs/S3-GATEWAY.md`, `docs/BENCH.md` §7l) is
 measured. What **is** established:
@@ -319,21 +319,36 @@ measured. What **is** established:
   403 while an object is under retention or legal hold, and the WORM correctness
   arm passes end to end (retain put 200, delete 403 `AccessDenied`, the object
   still reads back byte-identical, legal hold likewise).
-- GET through it is fast (~87k ops/s at 64 clients, 4 KiB).
+- **Its write path is no longer serialised across the durability barrier.**
+  `internal/namespace` stages each mutation, reserves the namespace keys it read,
+  releases the write lock across `Publish`, and advances the live index in
+  commit-root order from the log's commit hook, so concurrent, non-conflicting
+  PUTs reach the log's group committer together (see `docs/CONCURRENCY.md` §9).
+  `orfs_group_commit_batch_size` was **1** before and is **up to 438** after, and
+  PUT 4 KiB went 57.4 (c=1) / 58.2 (c=64) → 167.7 / 4,227 / 5,822 ops/s at
+  1 / 64 / 512 clients (`evidence/s3bench.json`), a **72×–100×** gain. A keyed PUT
+  is now one authoritative transaction instead of three.
+- GET through it is still fast (~78k ops/s at 64 clients, 4 KiB).
 
 What is **not** established, and must not be claimed:
 
-- **It is not a high-throughput endpoint.** PUT is ~57 ops/s single-client
-  (p50 ~17 ms) and does **not** improve with concurrency (58 ops/s at 64 clients,
-  p50 1.10 s). The premise that the gateway would reach a batched ~233k ops/s is
-  **refuted by measurement**: `internal/namespace` holds its write mutex across
-  every `Publish`, so writes serialize and the log's group committer never sees a
-  batch (`orfs_group_commit_batch_size` stays 1). Per append the gateway is slower
-  than the FUSE audit sink's 149 rec/s, because each PUT is a full object
-  transaction (inode + dentry + WORM xattr + data extent).
-- **It is not the manifested read path.** Measured both ways, `-manifest` off
-  leaves every PUT row statistically unchanged (56.9/57.6 vs 57.4/58.2 ops/s). The
-  EKBLOOM publication is not the PUT bottleneck.
+- **It is not a reproducible >10k ops/s PUT endpoint.** In the receipts above the
+  PUT arm measured 4,227 (c=64) and 5,822 (c=512) ops/s with `-manifest` on,
+  5,154/7,611 with `-manifest` off, and 1,957/3,838 at the log's **default**
+  batch bound of 128; a second identical run measured 3,940/4,906. Only the court's
+  *mixed* PUT+GET arm at 512 clients reaches 10,133 ops/s. Run-to-run spread on
+  this shared host is ~2×, so the honest statement is a range (roughly 4k–8k
+  ops/s for the PUT arm), not a target.
+- **The residual limit is the per-batch durability cost, not the lock.** With
+  ~258 PUTs sharing one barrier the barrier is the wall: the c=512 arm took 123
+  barriers in 5.46 s (≈ 44 ms each) — the data fsync plus the watermark's own
+  write/fsync/rename/dir fsync — on a disk that is 98% full and shared with other
+  work. Even a full 512-transaction batch cannot amortise a ~40 ms barrier past
+  ~13k ops/s, and the batch only fills to ~250–300 of the bound inside the 2 ms
+  collect window.
+- **The 1 MiB arm is swept only to 64 clients.** A PUT body is buffered whole, so
+  512 concurrent 1 MiB PUTs exceed the court's 2 GiB cap and the gateway is
+  OOM-killed.
 - **No MinIO comparison exists.** MinIO's public images are no longer pullable
   (Docker Hub and Quay both refuse access); the receipt records `MinIO:
   unavailable` with that reason and no MinIO number is claimed. A reachable
@@ -342,12 +357,15 @@ What is **not** established, and must not be claimed:
   SSE, ACLs, presigned URLs, chunked-upload signatures, or virtual-host
   addressing; SigV4 is header-based only. Clients that stream single-shot PUTs
   (or fall back to them) work; those that require multipart do not.
-- **One host, one run, one shape.** 1 and 64 clients, 4 KiB and 1 MiB objects,
+- **One host, one run, one shape.** 1, 64 and 512 clients (4 KiB) and 1/64 (1 MiB),
   bounded windows. No long-run endurance, no multi-node, no cross-host numbers.
+- **Concurrent permission changes are not serialised against a name operation.**
+  A mutation validates permissions against a committed view while holding
+  reservations on the names and link counts it touches; a concurrent
+  `chmod`/`chown` of the same inode is not ordered against that check (POSIX
+  specifies no outcome for the race). See `docs/CONCURRENCY.md` §9.
 - **An environment constraint is recorded, not hidden:** on this host Docker's
   data root is a small tmpfs, so the court keeps its measured payload on a
-  disk-backed bind mount (`S3WORK`) or an arm hits `ENOSPC`.
-
-The route to a *fast* WORM S3 endpoint is therefore a change in
-`internal/namespace` (stage the mutation and release the write lock across
-`Publish`, so the log's group committer can batch), not a gateway flag.
+  disk-backed bind mount (`S3WORK`) or an arm hits `ENOSPC`; that backing is a
+  nearly-full, shared disk, which is why the fsync-bound PUT rate varies ~2×
+  between runs.

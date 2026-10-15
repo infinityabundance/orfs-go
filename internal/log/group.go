@@ -16,6 +16,7 @@ package log
 
 import (
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -49,6 +50,9 @@ type groupConfig struct {
 }
 
 // applyOptions resolves options and the environment, then starts the committer.
+// An explicit WithGroupCommit bound wins; otherwise ORFS_GROUP_COMMIT_BATCH and
+// ORFS_GROUP_COMMIT_WAIT_MS override the defaults, so a deployment can trade
+// per-transaction latency for a larger shared barrier without a code change.
 func applyOptions(l *Log, opts []Option) {
 	for _, o := range opts {
 		o(l)
@@ -61,9 +65,15 @@ func applyOptions(l *Log, opts []Option) {
 	}
 	if l.groupCfg.maxBatch <= 0 {
 		l.groupCfg.maxBatch = DefaultGroupMaxBatch
+		if n, err := strconv.Atoi(os.Getenv("ORFS_GROUP_COMMIT_BATCH")); err == nil && n > 0 {
+			l.groupCfg.maxBatch = n
+		}
 	}
 	if l.groupCfg.maxWait <= 0 {
 		l.groupCfg.maxWait = DefaultGroupMaxWait
+		if n, err := strconv.Atoi(os.Getenv("ORFS_GROUP_COMMIT_WAIT_MS")); err == nil && n > 0 {
+			l.groupCfg.maxWait = time.Duration(n) * time.Millisecond
+		}
 	}
 	l.startGroup()
 }
@@ -196,6 +206,8 @@ type stagedTx struct {
 	req     *publishRequest
 	root    uint64
 	txID    uint64
+	base    uint64
+	records []*record.Record
 	nextSeq uint64
 }
 
@@ -243,6 +255,8 @@ func (g *groupCommitter) commitBatch(batch []*publishRequest) {
 			req:     batch[i],
 			root:    l.appendPos(),
 			txID:    p.txID,
+			base:    p.base,
+			records: p.records,
 			nextSeq: p.commitSeq + 1,
 		})
 	}
@@ -264,6 +278,22 @@ func (g *groupCommitter) commitBatch(batch []*publishRequest) {
 	if err := l.persistWatermark(); err != nil {
 		failBatch(batch, err)
 		return
+	}
+	// Observe every transaction in the batch in commit order, on this goroutine,
+	// before releasing any waiter: a Publish that returns has been applied. A hook
+	// failure cannot happen for records the log just wrote and validated, but if it
+	// did, the transactions already observed are durable and are acknowledged while
+	// the rest are failed rather than left waiting.
+	if l.hook != nil {
+		for i, s := range staged {
+			if err := l.hook(CommitEvent{Root: s.root, TxID: s.txID, BaseOffset: s.base, Records: s.records}); err != nil {
+				for _, done := range staged[:i] {
+					done.req.done <- publishResult{root: done.root}
+				}
+				failBatch(batch[i:], err)
+				return
+			}
+		}
 	}
 	for _, s := range staged {
 		s.req.done <- publishResult{root: s.root}

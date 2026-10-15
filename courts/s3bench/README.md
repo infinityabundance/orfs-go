@@ -2,9 +2,9 @@
 
 This court measures the S3 gateway (`cmd/orfs-s3`) against the FUSE-mounted
 append path and against a stock S3 server on the same machine, the same device,
-and the same container caps. It is **not** implemented as a script yet: this
-document is the design the later run must follow, so the numbers it produces
-mean what they say.
+and the same container caps. It is implemented as
+[`scripts/s3bench-court.sh`](../../scripts/s3bench-court.sh), run by
+[`scripts/container-s3bench.sh`](../../scripts/container-s3bench.sh).
 
 Code under test: [`internal/s3gw`](../../internal/s3gw) and
 [`cmd/orfs-s3`](../../cmd/orfs-s3); the protocol surface and its honest limits
@@ -60,10 +60,10 @@ measuring refusals.
 
 | Axis | Values |
 | --- | --- |
-| Concurrency | **1** and **64** |
+| Concurrency | **1**, **64** and **512** for the 4 KiB object and the get/mixed arms; **1** and **64** for the 1 MiB object (a PUT body is buffered whole, so 512 concurrent 1 MiB bodies OOM the gateway under the 2 GiB cap) |
 | Object size | **4 KiB** (the audit-record size) and **1 MiB** |
 | Operation | `PUT` only; `GET` only (over pre-PUT objects); mixed |
-| Duration | a bounded window per point (e.g. 10 s), never a fixed count |
+| Duration | a bounded window per point (e.g. 5 s), never a fixed count |
 
 Reported per point: **ops/s**, **MiB/s**, and **p50 / p99 / p99.9** latency, plus
 the error rate. Excluded from the window: bucket creation and the pre-PUT of the
@@ -86,7 +86,7 @@ process:
 | Metric | Why it is recorded |
 | --- | --- |
 | `orfs_physical_bytes`, `orfs_authoritative_bytes`, `orfs_logical_bytes`, `orfs_manifested_bytes`, `orfs_amplification_ratio` | the retention/framing tax of what the arm actually wrote |
-| `orfs_group_commit_batch_size{stat="last"\|"avg"}` | whether the log's group committer batched. The gateway's writes go through `namespace.Namespace`, whose write-side mutex spans each `Publish`, so the expected value is **1** — the court must report what it measures, including that |
+| `orfs_group_commit_batch_size{stat="last"\|"avg"}` | whether the log's group committer batched. The gateway's writes go through `namespace.Namespace`, which stages a mutation and releases the write lock across `Publish`, so concurrent PUTs do reach the committer together and the batch is > 1 (up to 438 at 512 clients). The court **scrapes `/metrics` before and after every PUT arm** and writes a `group_commit` row per arm with the batch gauges, the barrier delta (`orfs_fsync_latency_seconds_count`) and the arm's PUT requests divided by that delta |
 | `orfs_breach_total`, `orfs_quarantine_total`, `orfs_degraded` | a clean run is `0`; a capacity refusal is a real result, not a retry |
 | `orfs_s3_requests_total{op}`, `orfs_s3_worm_refusals_total{reason}` | the gateway's own accounting; refusals must be 0 in the throughput arms |
 

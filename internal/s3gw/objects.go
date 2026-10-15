@@ -214,32 +214,6 @@ func (g *Gateway) putObject(w http.ResponseWriter, r *http.Request, requestID st
 		}
 	}
 
-	var inodeID uint64
-	if hasExisting {
-		// Overwriting an unlocked object: the whole extent is replaced, so the
-		// new bytes fully define the object.
-		if err := b.vs.NS.Truncate(g.cred, existing.ID, 0); err != nil {
-			g.writeErr(w, r, requestID, err)
-			return
-		}
-		if _, err := b.vs.NS.Write(g.cred, existing.ID, 0, body); err != nil {
-			g.writeErr(w, r, requestID, err)
-			return
-		}
-		inodeID = existing.ID
-	} else {
-		file, cerr := b.vs.NS.Create(g.cred, parent, name, 0o644, g.cfg.UID, g.cfg.GID)
-		if cerr != nil {
-			g.writeErr(w, r, requestID, cerr)
-			return
-		}
-		if _, err := b.vs.NS.Write(g.cred, file.ID, 0, body); err != nil {
-			g.writeErr(w, r, requestID, err)
-			return
-		}
-		inodeID = file.ID
-	}
-
 	meta := objectMeta{
 		ETag:        etag,
 		Size:        uint64(len(body)),
@@ -249,12 +223,25 @@ func (g *Gateway) putObject(w http.ResponseWriter, r *http.Request, requestID st
 		LegalHold:   hold,
 		Created:     now.UTC().Format(time.RFC3339Nano),
 	}
-	if err := b.vs.NS.Setxattr(g.cred, inodeID, metaXattr, encodeObjectMeta(meta)); err != nil {
+	metaBytes := encodeObjectMeta(meta)
+
+	var inode *index.Inode
+	if hasExisting {
+		// Overwriting an unlocked object: the whole extent is replaced, and the
+		// replacement bytes, the truncate, and the refreshed WORM metadata commit
+		// in one authoritative transaction (one durability barrier, not three).
+		inode, err = b.vs.NS.ReplaceFileData(g.cred, existing.ID, body, metaXattr, metaBytes)
+	} else {
+		// A new object: the inode, its directory entry, its bytes, and the WORM
+		// metadata commit in one authoritative transaction.
+		inode, err = b.vs.NS.CreateFileData(g.cred, parent, name, 0o644, g.cfg.UID, g.cfg.GID, body, metaXattr, metaBytes)
+	}
+	if err != nil {
 		g.writeErr(w, r, requestID, err)
 		return
 	}
 
-	g.publishManifest(b, inodeID, body)
+	g.publishManifest(b, inode.ID, body)
 
 	w.Header().Set("ETag", etag)
 	w.Header().Set("x-amz-object-lock-legal-hold", legalHoldHeader(hold))

@@ -79,6 +79,14 @@ type Log struct {
 	// fake to force a barrier failure without touching the on-disk format.
 	syncHook func() error
 
+	// hook, when set, observes every committed transaction in commit order, on
+	// the single committing goroutine, after the transaction's bytes are durable
+	// and before its waiters are released. A volume uses it to advance its live
+	// index and republish its read view without holding a writer lock across the
+	// durability barrier; a Publish that returns has therefore already been
+	// observed. It must not Publish.
+	hook CommitHook
+
 	// fsyncHist records the durability-barrier latency (seconds), and the batch
 	// counters record group-commit batch sizes. They are process-scoped and
 	// exposed (with the capacity refusal counters) through Runtime().
@@ -322,14 +330,35 @@ func (l *Log) PhysicalBytes() (uint64, error) {
 	return total, nil
 }
 
+// CommitEvent describes one committed transaction delivered to a CommitHook.
+// Records are TX_BEGIN, the data records, and TX_COMMIT, in order, with their
+// exact canonical byte layout preserved, so a hook can advance an index to the
+// committed state by applying them at BaseOffset..Root exactly as a from-scratch
+// replay would.
+type CommitEvent struct {
+	Root       uint64
+	TxID       uint64
+	BaseOffset uint64
+	Records    []*record.Record
+}
+
+// CommitHook observes committed transactions in commit order. See Log.hook.
+type CommitHook func(ev CommitEvent) error
+
+// SetCommitHook installs the commit observer. It must be called before the log
+// is published to concurrently; a nil hook removes it.
+func (l *Log) SetCommitHook(h CommitHook) { l.hook = h }
+
 // preparedTx is a fully framed transaction ready to append: TX_BEGIN, the data
 // records, and a TX_COMMIT whose bracket checksum covers the exact bytes. The
 // frame bytes are identical to a per-publish commit; only the moment of the
 // durability barrier differs.
 type preparedTx struct {
 	frames       [][]byte
+	records      []*record.Record
 	txID         uint64
 	commitSeq    uint64
+	base         uint64
 	bracketBytes uint64
 	grandTotal   uint64
 }
@@ -374,6 +403,11 @@ func (l *Log) publishOne(data []*record.Record) (uint64, error) {
 	l.applyTx(p, l.appendPos())
 	if err := l.persistWatermark(); err != nil {
 		return 0, err
+	}
+	if l.hook != nil {
+		if err := l.hook(CommitEvent{Root: l.committedRoot, TxID: p.txID, BaseOffset: p.base, Records: p.records}); err != nil {
+			return 0, err
+		}
 	}
 	return l.committedRoot, nil
 }
@@ -428,7 +462,9 @@ func (l *Log) prepareTx(data []*record.Record, txID, seq, pos uint64) (*prepared
 	hash.Write(beginFrame)
 
 	frames := make([][]byte, 0, len(data)+2)
+	records := make([]*record.Record, 0, len(data)+2)
 	frames = append(frames, beginFrame)
+	records = append(records, begin)
 	for i, r := range data {
 		r.Header.FormatVersion = record.FormatVersion
 		r.Header.SequenceNumber = seq + 1 + uint64(i)
@@ -442,6 +478,7 @@ func (l *Log) prepareTx(data []*record.Record, txID, seq, pos uint64) (*prepared
 		}
 		hash.Write(f)
 		frames = append(frames, f)
+		records = append(records, r)
 	}
 	commitSeq := seq + uint64(len(data)) + 1
 	var bracket [record.BracketChecksumLen]byte
@@ -468,11 +505,14 @@ func (l *Log) prepareTx(data []*record.Record, txID, seq, pos uint64) (*prepared
 		return nil, err
 	}
 	frames = append(frames, commitFrame)
+	records = append(records, commit)
 
 	return &preparedTx{
 		frames:       frames,
+		records:      records,
 		txID:         txID,
 		commitSeq:    commitSeq,
+		base:         pos,
 		bracketBytes: bracketBytes,
 		grandTotal:   grandTotal,
 	}, nil

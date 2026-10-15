@@ -26,10 +26,10 @@ type=DATA_EXTENT count=1
 roundtrip: records=8 committed_root=995 byte_identical=true
 roundtrip: records=108 committed_root=13074 byte_identical=true
 --- full-op Go volume (compat profile), Rust verify ---
-verifying /tmp/tmp.1aVsO97u9u/govolfull/vol (deep)
-  [ok] volume_meta: uuid=4f703183-e753-4cd1-86f1-5c7d3e6d1f1c segment_size=262144 created_at=1792020031
+verifying /tmp/tmp.mKVMcDxkbT/govolfull/vol (deep)
+  [ok] volume_meta: uuid=7bd3861f-5750-4c22-86bf-fcbb2dc82903 segment_size=262144 created_at=1792073061
   [ok] volume_genesis: first committed record is VOLUME_GENESIS
-  [ok] genesis_matches_meta: genesis uuid=4f703183-e753-4cd1-86f1-5c7d3e6d1f1c segment_size=262144
+  [ok] genesis_matches_meta: genesis uuid=7bd3861f-5750-4c22-86bf-fcbb2dc82903 segment_size=262144
   [ok] log_format_version: genesis log format version 1 (legacy=0, this build supports up to 1)
   [ok] committed_root_is_boundary: root R=14768
   [ok] commit_watermark: committed_root=14768 segment=0 valid_len=14768 physical_end=14768
@@ -44,17 +44,17 @@ result: PASS
 --- native-profile Go volume, Rust verify (refusal expected) ---
 orfs: incompatible on-disk format: unknown mandatory record type 0x0017
 --- optional-record probe ---
-wrote /tmp/tmp.1aVsO97u9u/opt/vol-opt: type=0x8017 optional=true committed_bytes=1459 blake3=4cb6b34086973fea95ad05c6fb1296044563c1b4cf905d54b233aa29b271883b
-wrote /tmp/tmp.1aVsO97u9u/opt/vol-mand: type=0x0017 optional=false committed_bytes=1459 blake3=52d8e4b00493ad7bbe5f2cd5184dfdbaf70bed28beacb73a11e0c525fddfe153
+wrote /tmp/tmp.mKVMcDxkbT/opt/vol-opt: type=0x8017 optional=true committed_bytes=1459 blake3=4cb6b34086973fea95ad05c6fb1296044563c1b4cf905d54b233aa29b271883b
+wrote /tmp/tmp.mKVMcDxkbT/opt/vol-mand: type=0x0017 optional=false committed_bytes=1459 blake3=52d8e4b00493ad7bbe5f2cd5184dfdbaf70bed28beacb73a11e0c525fddfe153
 --- Rust verify (0x8017, optional) ---
 orfs: incompatible on-disk format: record type 0x8017 is optional and has no known semantics
 --- Rust verify (0x0017, mandatory) ---
 orfs: incompatible on-disk format: unknown mandatory record type 0x0017
 --- recovery: Rust verify on torn-tail volume ---
-verifying /tmp/tmp.1aVsO97u9u/rec/vol (deep)
-  [ok] volume_meta: uuid=ff5d95f6-6ab6-4ac5-babd-df5270379b7e segment_size=262144 created_at=1792020033
+verifying /tmp/tmp.mKVMcDxkbT/rec/vol (deep)
+  [ok] volume_meta: uuid=d76adea9-540a-4149-b4b6-92095c6787e1 segment_size=262144 created_at=1792073063
   [ok] volume_genesis: first committed record is VOLUME_GENESIS
-  [ok] genesis_matches_meta: genesis uuid=ff5d95f6-6ab6-4ac5-babd-df5270379b7e segment_size=262144
+  [ok] genesis_matches_meta: genesis uuid=d76adea9-540a-4149-b4b6-92095c6787e1 segment_size=262144
   [ok] log_format_version: genesis log format version 1 (legacy=0, this build supports up to 1)
   [ok] committed_root_is_boundary: root R=10198
   [ok] commit_watermark: committed_root=10198 segment=0 valid_len=10198 physical_end=10198
@@ -67,13 +67,13 @@ verifying /tmp/tmp.1aVsO97u9u/rec/vol (deep)
   [ok] namespace_index_rebuild: 7 inode(s), 6 dentry(ies); rebuild deterministic=true
 result: PASS
 --- SIGKILL recovery: Go verify ---
-volume:            /tmp/tmp.1aVsO97u9u/kill/vol
+volume:            /tmp/tmp.mKVMcDxkbT/kill/vol
 log format ver:    1
-uuid:              70cf0a05c7d2489ca3ad2b06b488e452
-committed root:    5202968
-committed records: 41887
-committed txns:    10471
-segments:          20
+uuid:              64aec98d292447b6849e1e1108d1bafd
+committed root:    5384323
+committed records: 43347
+committed txns:    10836
+segments:          21
 inodes:            3
 dentries:          2
 checks:
@@ -82,10 +82,10 @@ checks:
   [ok] watermark
   [ok] replay: 3 inode(s), 2 dentr(ies)
 --- in-place torn tail: Rust verify ---
-verifying /tmp/tmp.1aVsO97u9u/rec2/vol (deep)
-  [ok] volume_meta: uuid=2a155106-d99f-403b-8e13-d5c6bfce8054 segment_size=262144 created_at=1792020036
+verifying /tmp/tmp.mKVMcDxkbT/rec2/vol (deep)
+  [ok] volume_meta: uuid=275008a3-7a94-484f-98b7-e50b66f9e097 segment_size=262144 created_at=1792073066
   [ok] volume_genesis: first committed record is VOLUME_GENESIS
-  [ok] genesis_matches_meta: genesis uuid=2a155106-d99f-403b-8e13-d5c6bfce8054 segment_size=262144
+  [ok] genesis_matches_meta: genesis uuid=275008a3-7a94-484f-98b7-e50b66f9e097 segment_size=262144
   [ok] log_format_version: genesis log format version 1 (legacy=0, this build supports up to 1)
   [ok] committed_root_is_boundary: root R=10198
   [ok] commit_watermark: committed_root=10198 segment=0 valid_len=10198 physical_end=10198

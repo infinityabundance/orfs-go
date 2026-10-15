@@ -46,9 +46,10 @@ refused.
   directory — the marker `s3fs` creates — so clients that materialise
   directories keep working.
 - Per-object S3 metadata (`ETag`, `Content-Type`, the lock state, the creation
-  time) lives in **one extended attribute**, `user.orfs.s3.meta`, written as its
-  own authoritative transaction. It therefore survives recovery like any other
-  commit.
+  time) lives in **one extended attribute**, `user.orfs.s3.meta`, written in the
+  **same** authoritative transaction as the object's inode, directory entry, and
+  bytes — a PUT is one transaction and one durability barrier. It therefore
+  survives recovery like any other commit.
 
 Documented consequences of a tree mapping:
 
@@ -169,7 +170,10 @@ Flags: `-addr`, `-volume`, `-init`, `-segment-size`, `-bucket NAME=PATH` (repeat
 `-access-key`/`-secret-key` (or `ORFS_S3_ACCESS_KEY`/`ORFS_S3_SECRET_KEY`),
 `-region`, `-default-retention`, `-default-legal-hold`, `-manifest`,
 `-manifest-cache`, `-manifest-policy`, `-checkpoint-every`, `-group-commit`,
-`-metrics-require-auth`, `-max-object-bytes`, `-uid`, `-gid`.
+`-metrics-require-auth`, `-max-object-bytes`, `-uid`, `-gid`. The log's
+  group-commit bounds are the environment variables `ORFS_GROUP_COMMIT_BATCH`
+  (transactions per barrier, default 128) and `ORFS_GROUP_COMMIT_WAIT_MS`
+  (default 2).
 
 ## 7. Honest limits
 
@@ -195,12 +199,20 @@ Flags: `-addr`, `-volume`, `-init`, `-segment-size`, `-bucket NAME=PATH` (repeat
   continuous write stream most GETs therefore fall back to authority even with
   `-manifest` on, and each PUT pays one EKBLOOM encode plus two files under
   `.or_bloom/`. Set `-manifest=false` for a pure append sink that never re-reads.
-- **Group commit is enabled but does not batch here.** `-group-commit` sets
+- **Group commit is enabled and now batches.** `-group-commit` sets
   `ORFS_GROUP_COMMIT=1` (the log's opt-in group committer). Because every write
-  goes through `namespace.Namespace`, which holds a write-side mutex across its
-  `Publish`, concurrent `Publish` calls never overlap and the committer's batch
-  is 1. The measured gateway win, if any, is the removed FUSE round trip, not a
-  shared barrier — `orfs_group_commit_batch_size` on `/metrics` will show it.
+  goes through `namespace.Namespace`, which stages a mutation, reserves the
+  namespace keys it read, releases the write lock across `Publish`, and advances
+  the live index in commit-root order, concurrent non-conflicting PUTs reach the
+  committer together: `orfs_group_commit_batch_size` was 1 and is now up to 438
+  (`docs/CONCURRENCY.md` §9; `docs/BENCH.md` §7l). The batch bounds are the log's
+  defaults (128 transactions, 2 ms) unless `ORFS_GROUP_COMMIT_BATCH` /
+  `ORFS_GROUP_COMMIT_WAIT_MS` override them; a larger bound trades
+  per-transaction latency for a bigger shared barrier. Raising the bound and the
+  client count raised PUT throughput ~70–100× (58 → 4.2k ops/s at 64 clients,
+  5.8k at 512), but the per-batch durability cost (data fsync + the watermark's
+  own fsync cycle) still bounds it — see `docs/BENCH.md` §7l and
+  `docs/LIMITATIONS.md` §15.
 - **The gateway does not verify the volume.** It serves whatever the committed
   log says; run `orfs verify --deep` out of band.
 - **No durability claim beyond OrFS's own.** A PUT is acknowledged after its

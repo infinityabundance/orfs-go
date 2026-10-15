@@ -17,7 +17,6 @@ package namespace
 import (
 	"os"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/infinityabundance/orfs-go/internal/index"
@@ -48,14 +47,19 @@ type Namespace struct {
 
 	manifest ManifestSource
 
-	// mu serialises mutations (single writer). Reads do not take it: they read
-	// the volume's published immutable view instead.
-	mu sync.Mutex
+	// res serialises staged mutations by the namespace keys they touch. A
+	// mutation reserves its keys, releases the write lock across the durability
+	// barrier, and releases the reservation only once the transaction has
+	// committed and been applied. Conflicting writers therefore wait for a commit
+	// (and its index apply) rather than for the barrier itself, while
+	// non-conflicting writers run in parallel and their barriers batch in the
+	// log's group committer.
+	res *reservations
 }
 
 // New builds a namespace over a volume.
 func New(v *volume.Volume) *Namespace {
-	return &Namespace{vol: v, now: realNow, compat: v.Compat()}
+	return &Namespace{vol: v, now: realNow, compat: v.Compat(), res: newReservations(v.Index().NextInodeID)}
 }
 
 // Volume returns the backing volume.
@@ -79,8 +83,69 @@ func (ns *Namespace) ctimeRec(id uint64, tm record.Timespec) []*record.Record {
 // SetManifestSource installs the concealed read seam. A nil source disables it.
 func (ns *Namespace) SetManifestSource(src ManifestSource) { ns.manifest = src }
 
-// idx returns the writer's live, mutable index. Callers must hold ns.mu.
-func (ns *Namespace) idx() *index.Index { return ns.vol.Index() }
+// allocID reserves an inode id for a new inode.
+func (ns *Namespace) allocID() uint64 { return ns.res.allocID() }
+
+// stageFn is one mutation's planner and builder. On the first (final=false) call
+// it derives the reservation only; on the final call it also builds the record
+// set (allocating an inode id when it needs one). Both calls see a committed
+// view, and the final call runs with the reservation held.
+type stageFn func(v *view.View, final bool) (reservation, []*record.Record, error)
+
+// staged reserves a mutation's keys and rebuilds it under the reservation
+// against the current committed view. It returns the records and the held
+// reservation, which the caller must release once the commit has been applied.
+//
+// The reservation is re-derived from the freshly loaded view under the lock: if
+// the committed state moved while the transaction waited (so the keys it would
+// need changed), it releases and retries rather than committing a record set
+// built against stale state.
+func (ns *Namespace) staged(fn stageFn) (reservation, []*record.Record, error) {
+	for {
+		v := ns.vol.View()
+		res, _, err := fn(v, false)
+		if err != nil {
+			return reservation{}, nil, err
+		}
+		ns.res.acquire(res)
+		v2 := ns.vol.View()
+		res2, recs, err := fn(v2, true)
+		if err != nil {
+			ns.res.release(res)
+			return reservation{}, nil, err
+		}
+		if !res.same(res2) {
+			ns.res.release(res)
+			continue
+		}
+		return res, recs, nil
+	}
+}
+
+// publishStaged stages fn, publishes its record set as one committed
+// transaction, and releases the reservation once the transaction has been
+// applied. An empty record set is not published.
+func (ns *Namespace) publishStaged(fn stageFn) error {
+	res, recs, err := ns.staged(fn)
+	if err != nil {
+		return err
+	}
+	if len(recs) == 0 {
+		ns.res.release(res)
+		return nil
+	}
+	_, perr := ns.vol.Publish(recs)
+	ns.res.release(res)
+	return perr
+}
+
+// inodeAfter returns a just-committed inode from the published view.
+func (ns *Namespace) inodeAfter(id uint64) (*index.Inode, error) {
+	if in, ok := ns.vol.View().Inode(id); ok {
+		return in, nil
+	}
+	return nil, orfserr.NotFound("inode %d does not exist", id)
+}
 
 // realNow returns the current time, or a fixed timestamp when ORFS_CLOCK_EPOCH
 // is set. Pinning the clock (with a pinned volume UUID) makes the on-disk bytes
@@ -102,18 +167,8 @@ func mkRec(t uint16, inodeID uint64, payload []byte) *record.Record {
 	}
 }
 
-// dir loads an inode from the writer's live index and asserts it is a directory,
-// checking search permission. It is a writer-side helper; callers hold ns.mu.
-func (ns *Namespace) dir(cred Credential, id uint64, wantWrite bool) (*index.Inode, error) {
-	in, ok := ns.idx().Inode(id)
-	if !ok {
-		return nil, orfserr.NotFound("inode %d does not exist", id)
-	}
-	return checkDir(cred, id, in, wantWrite)
-}
-
-// viewDir is dir against an immutable read view. It is lock-free: the view and
-// its inodes are frozen, so any goroutine may call it.
+// dir loads an inode from a committed view and asserts it is a directory,
+// checking search permission.
 func viewDir(v *view.View, cred Credential, id uint64, wantWrite bool) (*index.Inode, error) {
 	in, ok := v.Inode(id)
 	if !ok {
@@ -136,10 +191,9 @@ func checkDir(cred Credential, id uint64, in *index.Inode, wantWrite bool) (*ind
 	return in, nil
 }
 
-// getattr is the unlocked inode lookup against the writer's live index. Callers
-// hold ns.mu.
-func (ns *Namespace) getattr(id uint64) (*index.Inode, error) {
-	in, ok := ns.idx().Inode(id)
+// getattr is the inode lookup against a committed view.
+func viewGetattr(v *view.View, id uint64) (*index.Inode, error) {
+	in, ok := v.Inode(id)
 	if !ok {
 		return nil, orfserr.NotFound("inode %d does not exist", id)
 	}
@@ -352,14 +406,5 @@ func (ns *Namespace) Listxattr(cred Credential, id uint64) ([]string, error) {
 	return names, nil
 }
 
-// namesOf counts the directory entries naming an inode. It reads the writer's
-// live index; callers hold ns.mu.
-func (ns *Namespace) namesOf(child uint64) int {
-	n := 0
-	for _, e := range ns.idx().Dentry {
-		if e == child {
-			n++
-		}
-	}
-	return n
-}
+// namesOf counts the directory entries naming an inode, from a committed view.
+func namesOf(v *view.View, child uint64) int { return v.NameCount(child) }
