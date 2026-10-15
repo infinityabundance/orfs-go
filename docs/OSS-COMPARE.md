@@ -19,7 +19,7 @@ comparable only at the same coordinate under the caveats stated with them.
   receipt [`../evidence/oss-compare.json`](../evidence/oss-compare.json)
 - Retention (Btrfs snapshots): [`BENCH.md`](BENCH.md) §7j, receipt
   [`../evidence/retention-btrfs.json`](../evidence/retention-btrfs.json)
-- Retention (OpenZFS): [`BENCH.md`](BENCH.md) §7k — **SKIPPED**, receipt
+- Retention (OpenZFS): [`BENCH.md`](BENCH.md) §7k — **real OpenZFS in a KVM micro-VM** (the host has no ZFS module and is never modified), receipt
   [`../evidence/retention-zfs.json`](../evidence/retention-zfs.json)
 - Native external baselines (ext4/tmpfs/overlay): [`BENCH.md`](BENCH.md) §5,
   receipt [`../evidence/performance/baseline.json`](../evidence/performance/baseline.json)
@@ -52,7 +52,7 @@ general-purpose high-throughput store. That framing is the standing position of
 | **OrFS-Rust 0.2.0** | the Rust reference, same design and wire format | append, read (equal durability, same `--direct-io`, same backing) |
 | **SeaweedFS 3.99** | a client/server filesystem (`weed mount` over master+volume+filer) | **nothing on durability**; read/append rows only as raw syscalls |
 | **Btrfs** | a native CoW local filesystem with read-only snapshots | retention *space economics*; not read/append latency (native vs FUSE) |
-| **OpenZFS** | a native CoW local filesystem with snapshots | **nothing** — SKIPPED on this host (§7k) |
+| **OpenZFS** | a native CoW local filesystem with snapshots | retention economics, **only within its own guest** — real OpenZFS is measured in a KVM micro-VM whose numbers are guest-inflated (§7k) |
 | **ext4 / tmpfs / overlay** | native local baselines | the *FUSE tax* only (§5) |
 
 The single most important caveat: **OrFS-GO and OrFS-Rust are the only
@@ -182,7 +182,7 @@ Stated plainly, so no reader has to infer it:
   negotiates and falls back loudly ([`TRANSPORT.md`](TRANSPORT.md)).
 - **Space economics under a no-overwrite workload.** Amplification grows
   monotonically with retained history by design (§3); there is no compaction.
-- **OpenZFS.** Not measured at all on this host (§7k).
+- **OpenZFS physical bytes are not ranked.** Real OpenZFS is now measured (§7k), but inside a KVM micro-VM on a virtio disk, and its physical figure is compression-aware (`compression=lz4` by default) — so those numbers are guest-inflated and are not like-for-like with OrFS's uncompressed `or.log`. They compare the two arms to each other only.
 
 ## 6. Methodology and comparability rules
 
@@ -222,7 +222,7 @@ Additional discipline learned while running these courts and now enforced:
 ```sh
 sh scripts/container-oss-compare.sh        # OrFS-GO vs OrFS-Rust vs SeaweedFS  -> evidence/oss-compare.json
 sh scripts/container-retention-btrfs.sh    # Btrfs retention vs the OrFS-GO log -> evidence/retention-btrfs.json
-sh scripts/container-retention-zfs.sh      # OpenZFS retention (SKIPPED here)   -> evidence/retention-zfs.json
+sh scripts/container-retention-zfs.sh      # real OpenZFS in a KVM micro-VM       -> evidence/retention-zfs.json
 sh scripts/container-verify.sh             # the whole court gate, SKIPPED-aware
 ```
 
@@ -240,6 +240,6 @@ This is an honest status line, not a roadmap promise. See
   and falls back.
 - **No cold-cache retention number**, no long-history retention curve, no
   endurance curve; all retention numbers are one bounded run.
-- **OpenZFS is SKIPPED** — the host has no reachable ZFS kernel module.
+- **OpenZFS numbers are guest-inflated** — they are measured inside a KVM micro-VM (nested virtio, a 384 MiB guest), so they compare only within that guest and not against the container courts.
 - **SeaweedFS is not equal-durability**; its rows are syscall-comparable only.
 - **Run-to-run variance is not quantified**; every court states that once.

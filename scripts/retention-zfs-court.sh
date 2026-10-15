@@ -81,6 +81,15 @@ READ_EPOCHS=${READ_EPOCHS:-all}
 SEED=${SEED:-1}
 ORFS_ARM=${ORFS_ARM:-1}
 
+# Path A: real OpenZFS inside a KVM micro-VM. The host has no ZFS kernel module
+# and loading one would be a host change, so the comparator runs in a guest
+# whose own kernel ships the out-of-tree OpenZFS module. ZFS_KVM=0 disables it.
+ZFS_KVM=${ZFS_KVM:-1}
+VM_MEM_MIB=${VM_MEM_MIB:-1024}
+VM_CPUS=${VM_CPUS:-2}
+VM_BOOT_SECONDS=${VM_BOOT_SECONDS:-600}
+ZFS_KVM_IMAGE=${ZFS_KVM_IMAGE:-/kvm/ubuntu-24.04-minimal-cloudimg-amd64.img}
+
 CAP_MEM_LIMIT=${CAP_MEM_LIMIT:-2g}
 CAP_MEMSWAP_LIMIT=${CAP_MEMSWAP_LIMIT:-2g}
 CAP_CPUS=${CAP_CPUS:-4}
@@ -161,6 +170,192 @@ if command -v zpool >/dev/null 2>&1; then
   fi
 fi
 
+# --- Path A: real OpenZFS inside a KVM micro-VM -----------------------------
+# OpenZFS is an out-of-tree kernel module; this host has none, and loading one
+# would be a host change. A KVM micro-VM whose *guest* kernel ships the module
+# gives a real OpenZFS without touching the host: the guest boots, loads its own
+# zfs.ko, and runs the very same cmd/retentionbench driver as the Btrfs court on
+# a file-backed vdev. Nothing outside the container is modified.
+KVM_ATTEMPTED=0
+KVM_DETAIL=""
+KVM_TAIL=""
+SKIP_REASON="no /dev/zfs and no zfs kernel module reachable from a container; host module load is out of scope"
+if [ "$ZFS_KVM" = 1 ] && [ -e /dev/kvm ] && command -v qemu-system-x86_64 >/dev/null 2>&1; then
+  KVM_ATTEMPTED=1
+  HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+  # The micro-VM's disk must live on a REAL filesystem, not the container's
+  # overlayfs: `cache=none` (O_DIRECT) does NOT bypass the page cache on
+  # overlayfs, so the guest's writes accumulate in the container's page cache
+  # until the memory cap is hit and qemu is OOM-killed (rc=137) — measured on this
+  # host. The wrapper bind-mounts a disk-backed dir and passes it as
+  # ZFSVM_WORKDIR. Falls back to the temp dir only when it is not provided.
+  VMWORK=${ZFSVM_WORKDIR:-$WORK/vm}
+  rm -rf "$VMWORK"
+  mkdir -p "$VMWORK"
+  echo "retention-zfs-court: host OpenZFS is absent; booting a KVM micro-VM that provides real OpenZFS"
+  set +e
+  sh "$HERE/retention-zfs-vm.sh" "$VMWORK" >"$WORK/kvm.out" 2>&1
+  KVM_RC=$?
+  set -e
+  KVM_TAIL=$(tail -c 2000 "$WORK/kvm.out" 2>/dev/null | json_escape || true)
+
+  if [ "$KVM_RC" = 0 ]; then
+    # ---- measured: real OpenZFS in a KVM micro-VM --------------------------
+    # shellcheck disable=SC1091
+    . "$VMWORK/facts"
+    n_of() { printf '%s' "$COUNTS" | sed -n "s/.*$1=\\([0-9]*\\).*/\\1/p" | tail -1; }
+    ZFS_RAN=$(n_of zfs_ran);     ZFS_RAN=${ZFS_RAN:-0}
+    ZFS_FAILED=$(n_of zfs_failed); ZFS_FAILED=${ZFS_FAILED:-0}
+    ORFS_RAN=$(n_of orfs_ran);   ORFS_RAN=${ORFS_RAN:-0}
+    ORFS_FAILED=$(n_of orfs_failed); ORFS_FAILED=${ORFS_FAILED:-0}
+    ORFS_STATUS=$(printf '%s' "$COUNTS" | sed -n 's/.*orfs_status=//p' | tail -1)
+    [ -n "$ORFS_STATUS" ] || ORFS_STATUS=unknown
+    ORFS_MOUNTED_OK=0; [ "$ORFS_STATUS" = mounted ] && ORFS_MOUNTED_OK=1
+    NPROC=$(nproc 2>/dev/null || echo "?")
+    KERNEL=$(uname -sr | json_escape)
+    GUEST_KERNEL_E=$(printf '%s' "$GUEST_KERNEL" | json_escape)
+    ZFS_VERSION_E=$(printf '%s' "$ZFS_VERSION" | json_escape)
+    POOL_VERSION_E=$(printf '%s' "$POOL_VERSION" | json_escape)
+    QEMU_VERSION_E=$(printf '%s' "$QEMU_VERSION" | json_escape)
+
+    COMP="$VMWORK/comparability.json"
+    cat > "$COMP" <<EOF
+{
+  "same_machine": true,
+  "container": {
+    "caps": {
+      "memory": "${CAP_MEM_LIMIT}",
+      "memory_swap": "${CAP_MEMSWAP_LIMIT}",
+      "cpus": "${CAP_CPUS}",
+      "pids_limit": "${CAP_PIDS_LIMIT}"
+    },
+    "nproc": "${NPROC}",
+    "kernel": "${KERNEL}",
+    "comparator_filesystem": "OpenZFS (real out-of-tree kernel module) inside a KVM micro-VM guest"
+  },
+  "kvm_guest": {
+    "hypervisor": "${QEMU_VERSION_E}",
+    "acceleration": "kvm (/dev/kvm; host CPU passthrough)",
+    "vcpus": ${VM_CPUS},
+    "memory_mib": ${VM_MEM_MIB},
+    "guest_kernel": "${GUEST_KERNEL_E}",
+    "zfs_version": "${ZFS_VERSION_E}",
+    "zpool_version": "${POOL_VERSION_E}",
+    "image_url": "${IMAGE_URL}",
+    "image_sha256": "${IMAGE_SHA256}"
+  },
+  "question": "Can a system retain every committed historical transition while achieving comparable tail latency, throughput and physical-space economics?",
+  "workload": {
+    "epochs": ${EPOCHS},
+    "writers": ${WRITERS},
+    "records_per_epoch_per_writer": ${RECORDS_PER_EPOCH},
+    "record_bytes": ${RECORD_BYTES},
+    "append_durability": "write(2)+fsync(2) per record (one durability barrier per record)",
+    "append_seconds_safety_bound": ${APPEND_SECONDS},
+    "read_seconds_per_arm": ${READ_SECONDS},
+    "readers": ${READERS},
+    "block_size": ${BLOCK_SIZE},
+    "seed": ${SEED},
+    "bounded": true
+  },
+  "segment_size_bytes": ${SEGMENT_SIZE},
+  "systems": {
+    "OpenZFS": {
+      "ran": true,
+      "retention": "read-only snapshot after every epoch (zfs snapshot)",
+      "underlying_pool": "${POOL} (file-backed vdev inside the guest)",
+      "snapshots_expected": ${EPOCHS}
+    },
+    "OrFS-GO": {
+      "mounted": $( [ "$ORFS_MOUNTED_OK" = 1 ] && echo true || echo false ),
+      "status": "${ORFS_STATUS}",
+      "retention": "every committed transition retained in the authoritative log (or.log); no snapshot step",
+      "mount_command": "orfs mount <vol> <mnt> --direct-io  (ORFS_GROUP_COMMIT unset)",
+      "fuse_library": "hanwen/go-fuse/v2 v2.12.0",
+      "snapshots_created": 0
+    }
+  },
+  "comparable_axes": [
+    "current-state append: the same defined epoch (one write(2)+fsync(2) per record), both systems inside the same KVM guest on the same virtual disk, measured at the syscall level.",
+    "current-state read: block-aligned uniform-random pread of the current committed state; OrFS-GO adds its FUSE round trip inside the guest.",
+    "physical vs logical bytes: retained physical bytes per logical byte. OpenZFS physical is the zfs list -o used figure of the dataset/snapshot; OrFS-GO physical is the authoritative or.log bytes (the same computation as the Btrfs court)."
+  ],
+  "not_comparable": [
+    "historical-state read: OpenZFS serves it from a snapshot (its .zfs/snapshot/<name> path); OrFS-GO does not serve named historical roots in this build (docs/LIMITATIONS.md), so this axis is OpenZFS-only. The OrFS-GO current-state read serves the newest committed bytes.",
+    "snapshot-creation cost: OrFS-GO has no snapshot step; it retains every committed transition at append time. The OpenZFS snapshot-creation row has no OrFS-GO counterpart.",
+    "snapshot extent sharing: OpenZFS snapshots share unchanged blocks copy-on-write, so a retained snapshot's used figure can be near zero. OrFS-GO's retained bytes are its appended log, which never shares extents; both are measured but are not the same computation.",
+    "read latency is a native-vs-FUSE comparison inside one guest: the OpenZFS read is a native guest filesystem read served from the guest page cache, while the OrFS-GO read is a FUSE request plus a daemon pread inside that same guest. The OpenZFS read IOPS therefore does not rank the OrFS-GO read."
+  ],
+  "differences": [
+    "The comparator is measured inside a KVM micro-VM (a guest Ubuntu kernel with its own OpenZFS module), not in the container: absolute latencies include nested-virtualisation and virtio-disk cost. The OrFS-GO arm is measured in the SAME guest, so the two systems share that overhead and the comparison between them is apples-to-apples; the numbers are NOT comparable to the container-only Btrfs court (evidence/retention-btrfs.json).",
+    "The host kernel still has no ZFS module; OpenZFS here is the guest's module, loaded inside the guest only. The host is never modified.",
+    "The guest's ZFS ARC is bounded (zfs_arc_max) so the small VM cannot spend its RAM on cache.",
+    "Host-level variance (the guest's page cache, the host scheduler, the backing device's write cache) is not controlled beyond the shared container; run-to-run variance is expected and unquantified."
+  ],
+  "not_ranked": true,
+  "arms": {
+    "OpenZFS": {"expected": ${ZFS_EXPECTED}, "ran": ${ZFS_RAN}, "failed": ${ZFS_FAILED}},
+    "OrFS-GO": {"expected": ${ORFS_EXPECTED}, "ran": ${ORFS_RAN}, "failed": ${ORFS_FAILED}, "mounted": $( [ "$ORFS_MOUNTED_OK" = 1 ] && echo true || echo false )}
+  },
+  "note": "Both systems ran inside ONE KVM micro-VM: OpenZFS (the guest kernel's out-of-tree module) snapped read-only after every epoch, and OrFS-GO retained every committed transition in its log. The receipt is data, not a leaderboard. A lost arm inside the VM FAILs the court."
+}
+EOF
+
+    set -- "$VMWORK/results"/*.json
+    FILES=""
+    for f in "$@"; do
+      [ -f "$f" ] && FILES="$FILES $f"
+    done
+    if [ -z "$FILES" ]; then
+      echo "retention-zfs-court: FAIL: the VM produced no measurement" >&2
+      exit 1
+    fi
+    if "$SUMMARY" -schema orfs.retention.zfs.v1 -comparator OpenZFS -comparability "$COMP" -o "$OUT" $FILES; then
+      echo "retention-zfs-court: wrote $OUT"
+    else
+      echo "retention-zfs-court: FAIL: retentionsummary could not write the receipt" >&2
+      exit 1
+    fi
+    rows=$(grep -o '"kind"' "$OUT" 2>/dev/null | wc -l)
+    if [ "$rows" -eq 0 ]; then
+      echo "retention-zfs-court: FAIL: receipt has no rows" >&2
+      exit 1
+    fi
+    if [ "$ZFS_FAILED" -gt 0 ]; then
+      echo "retention-zfs-court: FAIL: the OpenZFS arm lost $ZFS_FAILED arm(s) inside the VM; the receipt is partial" >&2
+      exit 1
+    fi
+    if [ "$ORFS_MOUNTED_OK" = 1 ] && [ "$ORFS_FAILED" -gt 0 ]; then
+      echo "retention-zfs-court: FAIL: OrFS-GO lost $ORFS_FAILED arm(s) inside the VM; the receipt is partial" >&2
+      exit 1
+    fi
+    rm -rf "$WORK" "$VMWORK"
+    if [ "$ORFS_MOUNTED_OK" = 1 ]; then
+      echo "retention-zfs-court: PASS ($rows row(s); real OpenZFS in a KVM micro-VM retained $EPOCHS snapshot(s); OrFS-GO measured on the comparable axes)"
+    else
+      echo "retention-zfs-court: PASS ($rows row(s); real OpenZFS in a KVM micro-VM; OrFS-GO NOT measured: status=$ORFS_STATUS)"
+    fi
+    exit 0
+  fi
+  if [ "$KVM_RC" = 3 ]; then
+    KVM_DETAIL="the KVM guest booted but could not bring up OpenZFS (rc=3)"
+  else
+    KVM_DETAIL="the KVM path was unavailable in this environment (rc=$KVM_RC)"
+  fi
+  # Never hide why the micro-VM path failed: the VM's own last words go to stderr
+  # (and into the receipt's skip evidence).
+  echo "retention-zfs-court: KVM micro-VM attempt (rc=$KVM_RC); its output tail was:" >&2
+  tail -c 1500 "$WORK/kvm.out" 2>/dev/null >&2 || true
+  SKIP_REASON="no /dev/zfs and no zfs kernel module on the host (module load is out of scope); the KVM micro-VM fallback also failed: $KVM_DETAIL"
+  rm -rf "$VMWORK"
+else
+  if [ "$ZFS_KVM" = 1 ]; then
+    KVM_DETAIL="no /dev/kvm (or qemu not installed); the KVM micro-VM path needs KVM"
+  else
+    KVM_DETAIL="disabled by ZFS_KVM=0"
+  fi
+fi
+
 # --- SKIPPED: record the feasibility evidence faithfully and exit 0 ---------
 if [ "$ZFS_POOL_OK" != 1 ]; then
   KERNEL=$(uname -sr | json_escape)
@@ -180,7 +375,7 @@ if [ "$ZFS_POOL_OK" != 1 ]; then
   "note": "OpenZFS is the fourth retention comparator (after the Btrfs court in evidence/retention-btrfs.json). This run is SKIPPED: OpenZFS is an out-of-tree kernel module and this environment has neither a /dev/zfs device nor a zfs module reachable from a container. No number is published, because none was measured. The feasibility block records the exact commands and their verbatim output so the finding is reproducible.",
   "method": "None. No workload ran: the shared driver (cmd/retentionbench) is only invoked once OpenZFS is reachable.",
   "skip": {
-    "reason": "no /dev/zfs and no zfs kernel module reachable from a container; host module load is out of scope",
+    "reason": "${SKIP_REASON}",
     "zfs_device_present": $( [ "$ZFS_DEV" = 1 ] && echo true || echo false ),
     "zpool_usable": false,
     "module_load_is_a_host_change": true,
@@ -191,7 +386,12 @@ if [ "$ZFS_POOL_OK" != 1 ]; then
     "zfsutils_linux_version": "${ZFSUTILS_VER}"
   },
   "feasibility": {
-    "conclusion": "OpenZFS is not usable in this environment: the host kernel has no zfs module (modprobe cannot find one and /proc/modules lists none) and there is no /dev/zfs device, so a container cannot reach a ZFS pool and a privileged container cannot create one on a file-backed vdev. The zpool/zfs userspace tools are present in the court image (zfsutils-linux) but refuse to act without the module. Loading a kernel module is a host-level change and is out of scope for this repository, so this is OUT OF SCOPE, not a choice.",
+    "conclusion": "The host kernel has no zfs module (modprobe cannot find one and /proc/modules lists none) and there is no /dev/zfs device, so a container cannot reach a host ZFS pool, and loading a kernel module is a host-level change that this repository will not make. Path A was therefore attempted: a KVM micro-VM whose guest kernel ships the out-of-tree OpenZFS module, running the same driver inside the guest. See kvm_path below for whether that produced a measurement. If it did not, the environment genuinely has no way to run OpenZFS without a host change.",
+    "kvm_path": {
+      "attempted": $( [ "$KVM_ATTEMPTED" = 1 ] && echo true || echo false ),
+      "detail": "${KVM_DETAIL}",
+      "output_tail": "${KVM_TAIL}"
+    },
     "commands": [
 ${COMMANDS}
     ]

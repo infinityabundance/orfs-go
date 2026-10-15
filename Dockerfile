@@ -67,6 +67,17 @@ RUN git clone --depth 1 "${PJD_URL}" /opt/pjdfstest \
  && ./configure \
  && make pjdfstest
 
+# The OpenZFS retention court's KVM micro-VM stage: the court image plus a KVM
+# hypervisor (qemu), cloud-init tooling, a static busybox (the HTTP server that
+# hands the driver to the guest), and curl (to fetch the pinned guest image).
+# OpenZFS itself is never installed here: the *guest* kernel provides it, and
+# only inside the VM. The host kernel is never touched.
+FROM court AS zfs-kvm
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      qemu-system-x86 cloud-image-utils busybox-static curl \
+ && rm -rf /var/lib/apt/lists/*
+
 FROM alpine:3.20 AS runtime
 RUN adduser -D -u 65532 orfs
 COPY --from=build /out/orfs /usr/local/bin/orfs

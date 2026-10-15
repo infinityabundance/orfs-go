@@ -1,18 +1,17 @@
 #!/bin/sh
 # OpenZFS retained-snapshot retention court — host wrapper.
 #
-# Builds the pinned court image and runs the retention court inside a privileged
-# court container (root + /dev/fuse + loop devices + mkfs.btrfs + the shared
-# scripts/lib.sh caps). The court image ships zfsutils-linux, so the container can
-# run `zpool`/`zfs`; the host's /dev/zfs is bind-mounted read-only *when it
-# exists*. When it does not exist (no OpenZFS kernel module on the host), the
-# court runs anyway, records the feasibility evidence, writes a SKIPPED receipt to
-# evidence/retention-zfs.json, and exits 0 — loading the kernel module would be a
-# host change and is out of scope. The receipt persists at the repository's
+# Builds the pinned KVM-court image and runs the retention court inside it. The
+# host has no OpenZFS kernel module, so the court boots a KVM micro-VM whose
+# *guest* kernel ships the out-of-tree OpenZFS module: real OpenZFS, measured
+# with the same driver and the same axes as the Btrfs court, without ever
+# touching the host kernel. The receipt persists at the repository's
 # evidence/retention-zfs.json.
 #
-# SKIPPED (never a false pass) when: no docker, no /dev/fuse, or no
-# /dev/loop-control on the host.
+# SKIPPED (never a false pass) when: no usable docker daemon, or the host has
+# neither /dev/kvm (the micro-VM path) nor /dev/zfs (a directly reachable
+# OpenZFS). The court itself reports a precise SKIPPED, with the feasibility
+# evidence, when neither path yields a measurement.
 #
 # Usage: sh scripts/container-retention-zfs.sh
 set -eu
@@ -22,32 +21,28 @@ if ! have_docker; then
   echo "container-retention-zfs: SKIPPED (no usable docker daemon)"
   exit 0
 fi
-if ! have_fuse; then
-  echo "container-retention-zfs: SKIPPED (no /dev/fuse on the host)"
-  exit 0
-fi
-if [ ! -e /dev/loop-control ]; then
-  echo "container-retention-zfs: SKIPPED (no /dev/loop-control; loop devices unavailable)"
+if [ ! -e /dev/kvm ] && [ ! -e /dev/zfs ]; then
+  echo "container-retention-zfs: SKIPPED (no /dev/kvm for the micro-VM path and no /dev/zfs for a direct path)"
   exit 0
 fi
 
 mkdir -p "${REPO_ROOT}/evidence"
 rm -f "${REPO_ROOT}/evidence/retention-zfs.json"
 build_court_image
+build_zfs_kvm_image
 
 # Bind the host's /dev/zfs read-only when it exists, so a host that *does* have
-# OpenZFS gives the container access to the pool. The path is absent on a host
-# with no OpenZFS kernel module; the court then records that as its finding.
+# OpenZFS can also be measured directly. On this host it is absent, and the
+# court falls back to the KVM micro-VM.
 ZFS_DEV=""
-if [ -e /dev/zfs ]; then
-  ZFS_DEV="-v /dev/zfs:/dev/zfs:ro"
-fi
+[ -e /dev/zfs ] && ZFS_DEV="-v /dev/zfs:/dev/zfs:ro"
 
 set +e
 # shellcheck disable=SC2086
 docker run --rm \
   --platform linux/amd64 \
   --privileged \
+  --device /dev/kvm \
   --network host ${CAPS_COMMON} \
   ${ZFS_DEV} \
   -e HOME=/tmp -e TMPDIR=/tmp \
@@ -66,9 +61,15 @@ docker run --rm \
   -e READ_SECONDS="${READ_SECONDS:-1}" -e READERS="${READERS:-1}" \
   -e BLOCK_SIZE="${BLOCK_SIZE:-4096}" -e READ_EPOCHS="${READ_EPOCHS:-all}" \
   -e SEED="${SEED:-1}" -e ORFS_ARM="${ORFS_ARM:-1}" \
+  -e ZFS_KVM="${ZFS_KVM:-1}" \
+  -e VM_MEM_MIB="${VM_MEM_MIB:-384}" -e VM_CPUS="${VM_CPUS:-2}" \
+  -e VM_BOOT_SECONDS="${VM_BOOT_SECONDS:-600}" \
+  -e ZFSVM_WORKDIR=/kvm/vmwork \
+  -e ZFS_KVM_IMAGE=/kvm/ubuntu-24.04-minimal-cloudimg-amd64.img \
   -v "${REPO_ROOT}/evidence":/evidence \
+  -v "${ZFSKVM_CACHE_DIR}":/kvm \
   -w /src \
-  "${COURT_IMAGE}" sh /src/scripts/retention-zfs-court.sh
+  "${ZFSKVM_IMAGE}" sh /src/scripts/retention-zfs-court.sh
 rc=$?
 set -e
 
@@ -79,7 +80,7 @@ fi
 
 if [ -f "${REPO_ROOT}/evidence/retention-zfs.json" ]; then
   if grep -q '"status": "skipped"' "${REPO_ROOT}/evidence/retention-zfs.json"; then
-    echo "container-retention-zfs: SKIPPED (OpenZFS unavailable; feasibility receipt in evidence/retention-zfs.json)"
+    echo "container-retention-zfs: SKIPPED (no reachable OpenZFS; feasibility receipt in evidence/retention-zfs.json)"
   else
     echo "container-retention-zfs: PASS — receipt in evidence/retention-zfs.json"
   fi

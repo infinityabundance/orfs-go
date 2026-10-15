@@ -821,7 +821,7 @@ readers, block_size}`, and two rows are comparable only at the same coordinate
 and only under the caveats above. The receipt is
 `evidence/retention-btrfs.json` (schema `orfs.retention.btrfs.v1`).
 
-## 7k. Retention court: OpenZFS snapshots vs the OrFS-GO log (SKIPPED on this host)
+## 7k. Retention court: real OpenZFS snapshots vs the OrFS-GO log (measured in a KVM micro-VM)
 
 Court: `scripts/retention-zfs-court.sh` + `cmd/retentionbench` (the shared driver,
 extended with a `zfs` space/snapshot kind) + `cmd/retentionsummary`, run inside a
@@ -830,34 +830,103 @@ comparability rules:
 [`../courts/retention-zfs/README.md`](../courts/retention-zfs/README.md).
 
 This is the **fourth system** for the §7j retention question, on the same axes and
-the same driver: OpenZFS would retain every committed state with `zfs snapshot`, a
-read-only CoW snapshot of a dataset, and the court would account physical vs
-logical bytes from `zfs list -o used,referenced,logicalused,logicalreferenced`.
-**It is SKIPPED on this host, and no number is published** — because none was
-measured.
+the same driver: OpenZFS retains every committed state with `zfs snapshot`, a
+read-only CoW snapshot of a dataset, and the court accounts physical vs logical
+bytes from `zfs list -o used,referenced,logicalused,logicalreferenced`.
 
-OpenZFS is an out-of-tree **kernel module**; `zpool`/`zfs` cannot create, import,
-or even query a pool without it, and loading a kernel module is a host-level change
-and out of scope ([`LIMITATIONS.md`](LIMITATIONS.md) §14). The court probes first
-and records the evidence in `evidence/retention-zfs.json` (schema
-`orfs.retention.zfs.v1`), which carries `status: "skipped"`, a `feasibility` block
-(the commands it ran and their verbatim output), a `comparability`/`not_comparable`
-block identical in shape to §7j's, and an `arms` block. The verbatim finding on
-this host:
+**How it is measured.** OpenZFS is an out-of-tree **kernel module**, and this host
+has none: `/dev/zfs` is absent, `zfs` is in neither `/proc/modules` nor
+`/proc/filesystems`, and `modprobe -n zfs` (a *query* only) reports `FATAL: Module
+zfs not found in directory /lib/modules/7.2.9-2-cachyos`. Loading a module is a
+**host change** and is out of scope, so the court boots a **KVM micro-VM** whose
+*guest* kernel provides OpenZFS: a pinned Ubuntu 24.04 minimal cloud image (kernel
+`6.8.0-146-generic`, `zfs-2.2.2-0ubuntu9.5` / `zfs-kmod-2.2.2`, sha256
+`2f119f50…`) under QEMU/KVM on the host's `/dev/kvm`. **Both arms run inside that
+one guest**, on the same file-backed vdev and the same virtio disk, and the
+guest's own `zpool`/`zfs` build the pool, take the snapshots and account the
+space. The host is never modified — OpenZFS lives only in the guest.
 
-| probe | output |
-| --- | --- |
-| `ls -l /dev/zfs` | `ls: cannot access '/dev/zfs': No such file or directory` (exit 2) |
-| `grep -w zfs /proc/modules` | *(empty; exit 1)* |
-| `grep -w zfs /proc/filesystems` | *(empty; exit 1)* |
-| `modprobe -n zfs` (query only; never loads) | `modprobe: FATAL: Module zfs not found in directory /lib/modules/7.2.9-2-cachyos` (exit 1) |
-| `zpool create -f -m none orfsretprobe <64 MiB file vdev>` | `The ZFS modules are not loaded. Try running '/sbin/modprobe zfs' as root to load them.` (exit 1) |
+Run:
 
-The court image ships the `zpool`/`zfs` userspace tools (`zfsutils-linux
-2.1.11`), so the blocker is the kernel module, not the tooling: `zpool` refuses to
-act without it, and a **file-backed vdev** needs the module just as a block-device
-vdev does, so there is no container-only path. This is a precise `SKIPPED` naming
-exactly what is missing, not a choice and not a false pass.
+```sh
+sh scripts/container-retention-zfs.sh
+```
+
+Receipt: `evidence/retention-zfs.json` (schema `orfs.retention.zfs.v1`; 40 rows,
+24 space rows, 8 snapshots; arms 24/24 OpenZFS and 16/16 OrFS-GO). The verbatim
+`zfs list` accounting, the pinned image and digest, the guest kernel and ZFS
+version, and every comparability caveat are recorded in the receipt.
+
+Measured (one bounded run; 8 epochs; epochs 0 and 7 shown). **Append — 4 KiB
+`write`+`fsync` per record, inside the guest:**
+
+| system | epoch | ops/s | p50 | p99 |
+| --- | ---: | ---: | ---: | ---: |
+| OpenZFS | 0 | 920 | 1.06 ms | 1.36 ms |
+| OpenZFS | 7 | 898 | 1.07 ms | 2.13 ms |
+| OrFS-GO | 0 | 55 | 18.0 ms | 28.5 ms |
+| OrFS-GO | 7 | 81 | 11.9 ms | 18.1 ms |
+
+**Read — block-aligned uniform random, epoch 7:**
+
+| system | state | IOPS | p50 | p99 |
+| --- | --- | ---: | ---: | ---: |
+| OpenZFS | current | 105,279 | 8.5 µs | 27.9 µs |
+| OpenZFS | **snapshot (historical)** | 110,408 | 8.3 µs | 26.7 µs |
+| OrFS-GO | current | 21,705 | 41.6 µs | 77.0 µs |
+
+**Snapshot cost** (`zfs snapshot`, one per epoch): **~7.4–7.8 ms** (~10× the
+Btrfs §7j figure, which is the nested-VM tax, not an OpenZFS property).
+
+**Physical vs logical bytes, epoch 7:**
+
+| system | state | logical | physical (`used`) | note |
+| --- | --- | ---: | ---: | --- |
+| OpenZFS | current | 7,354,368 | 219,136 | compression-aware (`logicalused` 7,406,592) |
+| OpenZFS | snapshot | 8,402,944 | **0** | all blocks shared with the live dataset (CoW) |
+| OrFS-GO | current | 8,388,608 | 9,371,648 | 1.117× `or.log`, uncompressed |
+
+**Honest framing.**
+
+- **The retention result is the point, and it holds:** a read-only OpenZFS
+  snapshot is created in ~7.4 ms, its uniquely-retained bytes are **0** (every
+  block is shared with the live dataset — CoW working), and a **historical
+  snapshot read is exactly as fast as a current read** (110,408 vs 105,279 IOPS;
+  p50 8.3 vs 8.5 µs). Retaining 8 states added no measurable read cost.
+- **These absolute numbers are NOT comparable to §7j.** Both arms here run inside
+  a 384 MiB KVM guest on a virtio disk, so every latency carries
+  nested-virtualisation and virtio cost; the container-only Btrfs court does not.
+  The two systems *are* comparable **to each other** (same guest, same disk), and
+  that is the only cross-system reading this section supports.
+- **The space figures are different computations and are not ranked.** OpenZFS's
+  physical figure is **compression-aware** — a new dataset defaults to
+  `compression=lz4`, so 219 KiB of device blocks hold 7.35 MiB of logical data —
+  while OrFS-GO's `or.log` bytes are uncompressed. A snapshot's `used` of 0 is
+  extent sharing, not a 0-byte cost. Do **not** read 0.03× against OrFS's 1.117×.
+- **The two arms' logical bases differ slightly in this run** (7.35 MiB vs
+  8.39 MiB); the receipt records both, and no ratio is claimed across them.
+- **Historical-state read and snapshot creation are OpenZFS-only.** OrFS-GO does
+  not serve named historical roots in this build, and it has no snapshot step —
+  it retains every transition at append time ([`LIMITATIONS.md`](LIMITATIONS.md) §10).
+- **Nothing outside the container was modified**, and the OpenZFS module exists
+  only in the guest.
+
+Two engineering facts worth recording, because they cost real time to find and
+are not obvious:
+
+- **A micro-VM does not fit the FUSE-court cap at the default sizing.** With a
+  512 MiB or 1 GiB guest, QEMU is OOM-killed (`rc=137`) under the shared 2 GiB
+  cap; a **384 MiB** guest fits.
+- **The VM's disk must live on a real filesystem, not overlayfs.** `cache=none`
+  (O_DIRECT) does **not** bypass the page cache on overlayfs, so the guest's
+  writes accumulate in the container's page cache until the cap is hit and QEMU
+  is killed — measured. Putting the VM work dir on a disk-backed bind mount fixed
+  it; the court passes `ZFSVM_WORKDIR` for this.
+
+The container-only `zfs-fuse` userspace port was also reachable and would fit the
+cap with no VM; it is **not** OpenZFS (an old userspace port, no
+`logicalused`/`logicalreferenced`, no `.zfs/snapshot`), so the court measures real
+OpenZFS in the guest instead and records that choice.
 
 ## 8. The frontier: measured versus not yet measured
 

@@ -165,6 +165,20 @@ docker_run_court() {
     "${COURT_IMAGE}" "$@"
 }
 
+# The OpenZFS retention court's KVM micro-VM image: the court image plus qemu,
+# cloud-image-utils, static busybox and curl. Used only by
+# scripts/container-retention-zfs.sh; kept separate so the base court image stays
+# lean. OpenZFS is provided by the *guest* kernel inside the VM, never by this
+# image.
+ZFSKVM_IMAGE=${ORFS_ZFSKVM_IMAGE:-orfs-go-court-zfskvm:local}
+ZFSKVM_CACHE_DIR=${REPO_ROOT}/.cache/kvm
+mkdir -p "${ZFSKVM_CACHE_DIR}"
+
+# build_zfs_kvm_image builds the pinned KVM-court image.
+build_zfs_kvm_image() {
+  docker build --platform linux/amd64 --target zfs-kvm -t "${ZFSKVM_IMAGE}" "${REPO_ROOT}"
+}
+
 # docker_run_court_privileged is docker_run_court plus --privileged, for courts
 # that create and mount loop devices (the cross-FS court's mkfs.ext4/xfs/btrfs).
 docker_run_court_privileged() {
