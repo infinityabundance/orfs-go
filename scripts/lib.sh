@@ -100,7 +100,37 @@ docker_run_rust_fuse() {
     "${RUST_IMAGE}" "$@"
 }
 
-# --- SeaweedFS (third comparator: its FUSE client, `weed mount`) -------------
+# --- MinIO (the WORM S3 court's external comparator) -------------------------
+# Staged like the other third-party binaries: a pinned image is pulled with an
+# explicit --platform and its single static binary extracted with docker
+# create/cp. The image is never *run* on the host.
+#
+# NOTE (measured): MinIO's public images are no longer pullable. Both
+# `minio/minio` on Docker Hub and `quay.io/minio/minio` answer with an access
+# denial (Docker Hub: "pull access denied ... repository does not exist or may
+# require 'docker login'"; Quay: "unauthorized: access to the requested resource
+# is not authorized"). This function therefore usually fails, and the S3 court
+# records the MinIO arm as `unavailable` with that reason rather than inventing a
+# comparison. If a reachable MinIO image is supplied via ORFS_MINIO_IMAGE, it is
+# used.
+MINIO_IMAGE=${ORFS_MINIO_IMAGE:-minio/minio:RELEASE.2024-01-16T16-07-38Z}
+MINIO_DIR=${REPO_ROOT}/.cache/minio
+MINIO_BIN=${MINIO_DIR}/minio
+mkdir -p "${MINIO_DIR}"
+
+stage_minio() {
+  [ -x "${MINIO_BIN}" ] && return 0
+  have_docker || return 1
+  docker pull --platform linux/amd64 "${MINIO_IMAGE}" >/dev/null 2>&1 || return 1
+  _cid=$(docker create --platform linux/amd64 "${MINIO_IMAGE}" 2>/dev/null) || return 1
+  if ! docker cp "${_cid}:/usr/bin/minio" "${MINIO_BIN}" >/dev/null 2>&1; then
+    docker rm "${_cid}" >/dev/null 2>&1 || true
+    return 1
+  fi
+  docker rm "${_cid}" >/dev/null 2>&1 || true
+  chmod +x "${MINIO_BIN}"
+  [ -x "${MINIO_BIN}" ]
+}
 # The head-to-head court's third system is a single-node SeaweedFS (master +
 # volume + filer) served through its FUSE client. It is not built from source
 # here: the pinned upstream image is pulled with an explicit --platform (the host

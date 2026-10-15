@@ -76,6 +76,8 @@ else
         sh "$(dirname "$0")/container-retention-btrfs.sh"
       run_stage "retention-zfs (OpenZFS snapshots vs the OrFS-GO log: retain every committed state)" \
         sh "$(dirname "$0")/container-retention-zfs.sh"
+      run_stage "s3bench (WORM S3 gateway vs MinIO: PUT/GET and the WORM correctness arm)" \
+        sh "$(dirname "$0")/container-s3bench.sh"
     else
       skip "fuse (mounted POSIX court)" "no /dev/fuse"
       skip "fsstress (bounded op storm + POSIX extras)" "no /dev/fuse"
@@ -108,6 +110,7 @@ else
     skip "oss-compare (mounted OrFS-GO vs OrFS-Rust vs SeaweedFS: append+fsync and read)" "--fast"
     skip "retention-btrfs (Btrfs read-only snapshots vs the OrFS-GO log: retain every committed state)" "--fast"
     skip "retention-zfs (OpenZFS snapshots vs the OrFS-GO log: retain every committed state)" "--fast"
+    skip "s3bench (WORM S3 gateway vs MinIO: PUT/GET and the WORM correctness arm)" "--fast"
   fi
 fi
 

@@ -34,6 +34,7 @@ capability, it is backed by code and, where a behaviour is claimed, by a court i
 | [`SNAPSHOTS.md`](SNAPSHOTS.md) | Index checkpoints: the snapshot format, the committed-root directory, validity/fallback policy, and the measured startup curve |
 | [`LIMITATIONS.md`](LIMITATIONS.md) | Every standing non-claim, so absence is explicit |
 | [`OSS-COMPARE.md`](OSS-COMPARE.md) | The aggregate answer to "can a system retain every committed transition while matching tail latency, throughput and space economics?" — every court's result in one place, with what is and is not comparable |
+| [`S3-GATEWAY.md`](S3-GATEWAY.md) | The dependency-free WORM S3 gateway: the operation set, the WORM enforcement, the measured PUT/GET split, and the honest finding that its PUT path is serialized by the namespace lock |
 | [`SECURITY.md`](SECURITY.md) | Threat model; integrity is not authentication |
 | [`REJECTED.md`](REJECTED.md) | Designs decided against, with reasons |
 
@@ -48,6 +49,7 @@ capability, it is backed by code and, where a behaviour is claimed, by a court i
 | [`../courts/oss-compare/README.md`](../courts/oss-compare/README.md) | The open-source storage head-to-head court (step 2: OrFS-GO vs OrFS-Rust vs SeaweedFS FUSE): the shared deterministic driver and the comparability rules, including the not-comparable durability/data-path axes |
 | [`../courts/retention-btrfs/README.md`](../courts/retention-btrfs/README.md) | The Btrfs retained-snapshots retention court: one epoch workload, a read-only snapshot per epoch, and the physical-space economics of retaining every state (vs the OrFS-GO log) |
 | [`../courts/retention-zfs/README.md`](../courts/retention-zfs/README.md) | The OpenZFS retained-snapshot retention court (the fourth system): same axes as the Btrfs court, measured against **real OpenZFS** booted in a KVM micro-VM (the host has no ZFS module and is never modified) |
+| [`../courts/s3bench/README.md`](../courts/s3bench/README.md) | The WORM S3 court: the OrFS-S3 gateway vs MinIO, the shared S3 client, the WORM correctness arm, and the measured PUT/GET split |
 
 ## The one rule
 

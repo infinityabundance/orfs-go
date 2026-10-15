@@ -53,6 +53,8 @@ RUN CGO_ENABLED=0 go build -o /out/orfs ./cmd/orfs \
  && CGO_ENABLED=0 go build -o /out/orfsoptprobe ./cmd/orfsoptprobe \
  && CGO_ENABLED=0 go build -o /out/orfscompare ./cmd/orfscompare \
  && CGO_ENABLED=0 go build -o /out/osscomparesummary ./cmd/osscomparesummary \
+ && CGO_ENABLED=0 go build -o /out/s3load ./courts/s3bench/s3load \
+ && CGO_ENABLED=0 go build -o /out/orfs-s3 ./cmd/orfs-s3 \
  && CGO_ENABLED=0 go build -o /out/retentionbench ./cmd/retentionbench \
  && CGO_ENABLED=0 go build -o /out/retentionsummary ./cmd/retentionsummary
 

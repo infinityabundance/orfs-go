@@ -1,0 +1,251 @@
+{
+  "schema": "orfs.performance.s3bench.v1",
+  "generated_at_unix": 1792060571,
+  "note": "One client (cmd/s3bench/s3load, its own SigV4 signer) drove the OrFS-S3 gateway and MinIO, sequentially, inside one resource-capped container on the same machine. This receipt is data, not a leaderboard: rows are keyed by {system, mode, concurrency, object_bytes} and are never ranked across incomparable coordinates.",
+  "method": "A PUT is one single-shot S3 PUT of a seeded object; a GET is one S3 GET of a pre-PUT object; mixed alternates. Latencies are exact observed samples (per-worker slices merged and sorted). Bounded windows; the driver's own sample buffer is capped.",
+  "comparability": {
+    "same_machine": true,
+    "container": {
+      "caps": {"memory": "2g", "memory_swap": "2g", "cpus": "4", "pids_limit": "1024"},
+      "nproc": "16",
+      "kernel": "Linux 7.2.9-2-cachyos",
+      "backing_filesystem": "ext2/ext3"
+    },
+    "workload": {
+      "duration_seconds": 5,
+      "concurrency": [1,64],
+      "put_object_bytes": [4096,1048576],
+      "get_object_bytes": 4096,
+      "seed": 1,
+      "bounded": true
+    },
+    "segment_size_bytes": 8388608,
+    "systems": {
+      "OrFS-S3": {
+        "ran": true,
+        "binary": "cmd/orfs-s3",
+        "gateway": "in-process S3 over an append-only OrFS volume; no FUSE in the data path",
+        "worm": "-default-retention forever; DELETE refused while locked",
+        "manifested_reads": "on (-manifest)",
+        "group_commit": "-group-commit (ORFS_GROUP_COMMIT=1)",
+        "daemon_stderr": "orfs-s3: listening on 127.0.0.1:9000 (region us-east-1)"
+      },
+      "MinIO": {
+        "ran": false,
+        "status": "unavailable",
+        "availability_note": "MinIO public images refuse access (docker.io/minio/minio and quay.io/minio/minio both answer with a registry access denial); no MinIO binary was obtainable, so no MinIO comparison was run",
+        "note": "client/server S3 server over its own local storage directory; the system most WORM is bought with today"
+      }
+    },
+    "not_comparable": [
+      "durability: MinIO is a client/server object store with its own on-disk format and fsync policy; the OrFS-S3 gateway appends to an OrFS authoritative log. The two do not offer the same durability contract and their rates are not a like-for-like durability ranking.",
+      "data path: the gateway serves in-process from one local append-only volume; MinIO serves over its HTTP server from its own storage engine. Same client, same operations, different systems underneath.",
+      "the gateway does NOT get batched group commit: internal/namespace holds its write mutex across every Publish, so concurrent PUTs never overlap and orfs_group_commit_batch_size stays 1. The gateway win measured here is the removed FUSE round trip, not a batched 233k-ops/s path."
+    ],
+    "not_ranked": true,
+    "arms": {
+      "OrFS-S3": {"failed": 0},
+      "MinIO": {"ran": 0, "failed": 0, "status": "unavailable"},
+      "failed": []
+    }
+  },
+  "arms": [
+{
+  "op": "get",
+  "concurrency": 1,
+  "object_bytes": 4096,
+  "duration_seconds": 5,
+  "elapsed_seconds": 5.000073791,
+  "operations": 124448,
+  "ops_per_second": 24889.232679726265,
+  "bytes_per_second": 101946297.05615878,
+  "p50_seconds": 0.000036649,
+  "p95_seconds": 0.000060954,
+  "p99_seconds": 0.00009087,
+  "p999_seconds": 0.000185365,
+  "errors": 0,
+  "sample_cap_hit": false,
+  "total_bytes": 0,
+  "bounded_by": "duration"
+}
+,
+{
+  "op": "get",
+  "concurrency": 64,
+  "object_bytes": 4096,
+  "duration_seconds": 5,
+  "elapsed_seconds": 5.032518558,
+  "operations": 439725,
+  "ops_per_second": 87376.72696725305,
+  "bytes_per_second": 357895073.6578685,
+  "p50_seconds": 0.000326739,
+  "p95_seconds": 0.001203914,
+  "p99_seconds": 0.002414069,
+  "p999_seconds": 0.040330702,
+  "errors": 0,
+  "sample_cap_hit": false,
+  "total_bytes": 0,
+  "bounded_by": "duration"
+}
+,
+{
+  "orfs_amplification_ratio": 1.107833687687949,
+  "orfs_authoritative_bytes": 581699682,
+  "orfs_breach_total{reason=\"authoritative\"}": 0,
+  "orfs_breach_total{reason=\"backing_reserve\"}": 0,
+  "orfs_breach_total{reason=\"hard_quota\"}": 0,
+  "orfs_degraded": 0,
+  "orfs_fsync_latency_seconds_count": 103060,
+  "orfs_fsync_latency_seconds_sum": 128.19272760099992,
+  "orfs_fsync_latency_seconds{quantile=\"0.5\"}": 0.002,
+  "orfs_fsync_latency_seconds{quantile=\"0.99\"}": 0.002,
+  "orfs_group_commit_batch_size{stat=\"avg\"}": 1,
+  "orfs_group_commit_batch_size{stat=\"last\"}": 1,
+  "orfs_logical_bytes": 525078528,
+  "orfs_manifested_bytes": 547328875,
+  "orfs_physical_bytes": 581699718,
+  "orfs_quarantine_total{unit=\"bytes\"}": 0,
+  "orfs_quarantine_total{unit=\"segments\"}": 0,
+  "orfs_s3_requests_total{op=\"DeleteObject\"}": 2,
+  "orfs_s3_requests_total{op=\"GetObject\"}": 564715,
+  "orfs_s3_requests_total{op=\"HeadObject\"}": 0,
+  "orfs_s3_requests_total{op=\"ListObjects\"}": 0,
+  "orfs_s3_requests_total{op=\"PutObject\"}": 34354,
+  "orfs_s3_worm_refusals_total{reason=\"legal-hold\"}": 1,
+  "orfs_s3_worm_refusals_total{reason=\"retention\"}": 2,
+  "orfs_verify_deep_failures": 0
+}
+,
+{
+  "op": "mixed",
+  "concurrency": 1,
+  "object_bytes": 4096,
+  "duration_seconds": 5,
+  "elapsed_seconds": 5.006717994,
+  "operations": 569,
+  "ops_per_second": 113.64730361923397,
+  "bytes_per_second": 465499.3556243823,
+  "p50_seconds": 0.016645798,
+  "p95_seconds": 0.018279602,
+  "p99_seconds": 0.021292066,
+  "p999_seconds": 0.046009836,
+  "errors": 0,
+  "sample_cap_hit": false,
+  "total_bytes": 1167360,
+  "bounded_by": "duration"
+}
+,
+{
+  "op": "mixed",
+  "concurrency": 64,
+  "object_bytes": 4096,
+  "duration_seconds": 5,
+  "elapsed_seconds": 5.625992255,
+  "operations": 578,
+  "ops_per_second": 102.73743258112609,
+  "bytes_per_second": 420812.52385229245,
+  "p50_seconds": 0.935229221,
+  "p95_seconds": 1.137847829,
+  "p99_seconds": 1.140197026,
+  "p999_seconds": 1.141179055,
+  "errors": 0,
+  "sample_cap_hit": false,
+  "total_bytes": 1314816,
+  "bounded_by": "duration"
+}
+,
+{
+  "op": "put",
+  "concurrency": 1,
+  "object_bytes": 1048576,
+  "duration_seconds": 5,
+  "elapsed_seconds": 5.183221594,
+  "operations": 111,
+  "ops_per_second": 21.415252654544332,
+  "bytes_per_second": 22455519.967491478,
+  "p50_seconds": 0.028070996,
+  "p95_seconds": 0.115735003,
+  "p99_seconds": 0.240975508,
+  "p999_seconds": 0.274528559,
+  "errors": 0,
+  "sample_cap_hit": false,
+  "total_bytes": 116391936,
+  "bounded_by": "duration"
+}
+,
+{
+  "op": "put",
+  "concurrency": 1,
+  "object_bytes": 4096,
+  "duration_seconds": 5,
+  "elapsed_seconds": 5.015542495,
+  "operations": 288,
+  "ops_per_second": 57.42150530817106,
+  "bytes_per_second": 235198.48574226865,
+  "p50_seconds": 0.016979609,
+  "p95_seconds": 0.019940917,
+  "p99_seconds": 0.021513567,
+  "p999_seconds": 0.042122789,
+  "errors": 0,
+  "sample_cap_hit": false,
+  "total_bytes": 1179648,
+  "bounded_by": "duration"
+}
+,
+{
+  "op": "put",
+  "concurrency": 64,
+  "object_bytes": 1048576,
+  "duration_seconds": 5,
+  "elapsed_seconds": 5.5538585430000005,
+  "operations": 257,
+  "ops_per_second": 46.27413500185721,
+  "bytes_per_second": 48521947.38370743,
+  "p50_seconds": 1.282022263,
+  "p95_seconds": 1.824324265,
+  "p99_seconds": 1.824701928,
+  "p999_seconds": 1.831596605,
+  "errors": 0,
+  "sample_cap_hit": false,
+  "total_bytes": 269484032,
+  "bounded_by": "bytes"
+}
+,
+{
+  "op": "put",
+  "concurrency": 64,
+  "object_bytes": 4096,
+  "duration_seconds": 5,
+  "elapsed_seconds": 5.515358719,
+  "operations": 321,
+  "ops_per_second": 58.20111009174778,
+  "bytes_per_second": 238391.7469357989,
+  "p50_seconds": 1.100420964,
+  "p95_seconds": 1.106564602,
+  "p99_seconds": 1.106967673,
+  "p999_seconds": 1.10704665,
+  "errors": 0,
+  "sample_cap_hit": false,
+  "total_bytes": 1314816,
+  "bounded_by": "duration"
+}
+,
+{
+  "retain_put": 200,
+  "retain_delete": 403,
+  "retain_refusal_header": "retention",
+  "retain_delete_code": "AccessDenied",
+  "get_status": 200,
+  "get_bytes_match": true,
+  "reassert_put": 403,
+  "reassert_code": "AccessDenied",
+  "legal_hold_put": 200,
+  "legal_hold_delete": 403,
+  "legal_hold_refusal_header": "legal-hold",
+  "legal_hold_delete_code": "AccessDenied",
+  "all_expected": true,
+  "retain_until_sent": "2026-10-15T11:36:11Z"
+}
+
+  ]
+}

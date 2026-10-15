@@ -928,6 +928,78 @@ cap with no VM; it is **not** OpenZFS (an old userspace port, no
 `logicalused`/`logicalreferenced`, no `.zfs/snapshot`), so the court measures real
 OpenZFS in the guest instead and records that choice.
 
+## 7l. WORM S3 court: the OrFS-S3 gateway, measured
+
+Court: `scripts/s3bench-court.sh` + `courts/s3bench/s3load` (the client, with its
+own SigV4 signer) run inside the court container by `scripts/container-s3bench.sh`.
+Design: [`../courts/s3bench/README.md`](../courts/s3bench/README.md).
+
+`cmd/orfs-s3` is a minimal, dependency-free WORM S3 gateway: PUT (single-shot) is
+an authoritative OrFS append, GET/HEAD go through the manifested read path, DELETE
+is refused (403) while an object is under retention or legal hold, and `/metrics`
+re-exposes the existing breach/quarantine counters. It bypasses FUSE entirely.
+
+Run:
+
+```sh
+sh scripts/container-s3bench.sh                        # -manifest on (default)
+GW_MANIFEST=off S3BENCH_OUT=/evidence/s3bench-nomanifest.json sh scripts/container-s3bench.sh
+```
+
+Receipts: `evidence/s3bench.json` and `evidence/s3bench-nomanifest.json` (schema
+`orfs.performance.s3bench.v1`). Measured (one bounded run, 4 KiB objects unless
+stated, `-default-retention forever`, unique keys per arm):
+
+| op | concurrency | object | ops/s | p50 | p99 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| GET | 1 | 4 KiB | **24,889** | 36.6 µs | 93.1 µs |
+| GET | 64 | 4 KiB | **87,377** | 326.7 µs | 2.93 ms |
+| PUT | 1 | 4 KiB | **57.4** | 17.0 ms | 21.6 ms |
+| PUT | 64 | 4 KiB | **58.2** | 1.10 s | 1.11 s |
+| PUT | 1 | 1 MiB | 21.4 | 28.1 ms | 240 ms |
+| PUT | 64 | 1 MiB | 46.3 (byte-capped) | 1.28 s | 1.83 s |
+| mixed | 1 | 4 KiB | 114.3 | 16.6 ms | 21.6 ms |
+| mixed | 64 | 4 KiB | 104.2 | 914 ms | 1.11 s |
+
+**WORM correctness arm (`-mode worm`) — all as expected:** PUT with a finite
+retention returns 200; DELETE returns **403 `AccessDenied`**; the object still
+GETs back 200 with byte-identical content; the same for a legal hold;
+`all_expected: true`.
+
+**The honest headline: the gateway does NOT turn 149 rec/s into 233k ops/s.**
+
+- **PUT is ~57 ops/s single-client (p50 ~17 ms), and concurrency does not help**
+  (58 ops/s at 64 clients, p50 1.10 s). That is the namespace write mutex made
+  visible: `internal/namespace` holds `ns.mu` across every `Publish`, so
+  concurrent PUTs serialize and `orfs_group_commit_batch_size` stays 1. The
+  gateway is *slower* per append than the FUSE audit sink's 149 rec/s, because it
+  pays per-PUT transaction work (object inode + dentry + WORM xattr + data extent)
+  and cannot batch.
+- **It is not the manifested read path.** The `-manifest` off receipt is
+  statistically the same on every PUT row (56.9 and 57.6 ops/s vs 57.4 and 58.2);
+  the EKBLOOM publication is not the PUT bottleneck.
+- **GET is genuinely fast** (87k ops/s at 64 clients) — the read path is not the
+  problem.
+- So the route to a fast WORM S3 endpoint is **not** a gateway flag: it is taking
+  `namespace` off the write critical path (stage the mutation, release the lock
+  across `Publish`, and let the log's group committer batch). Until that lands,
+  this gateway is a *correct, dependency-free WORM S3 surface*, not a fast one.
+- **The MinIO comparison could not be run.** MinIO's public images are no longer
+  pullable — `minio/minio` on Docker Hub answers `pull access denied ...
+  repository does not exist or may require 'docker login'` and `quay.io/minio/minio`
+  answers `unauthorized: access to the requested resource is not authorized`. The
+  receipt records `MinIO: {ran: false, status: "unavailable"}` with that reason;
+  no MinIO number is claimed.
+
+**Comparability.** The gateway and MinIO would differ on durability and data path
+(an in-process gateway over an append-only log vs a client/server object store
+over its own storage), so the receipt marks those axes `not_comparable`. Rows are
+keyed `{system, op, concurrency, object_bytes}` and never ranked. One environment
+note worth recording: on this host Docker's data root is a small tmpfs, so the
+court keeps its measured payload on a disk-backed bind mount (`S3WORK`) rather
+than the container overlay, or an arm hits `ENOSPC`.
+
+
 ## 8. The frontier: measured versus not yet measured
 
 Measured today (all bounded, laboratory conditions):

@@ -309,3 +309,45 @@ What is **not** established, and must not be read from §7k:
   must live on a real filesystem (not overlayfs, where `cache=none`/O_DIRECT does
   not bypass the page cache and QEMU is OOM-killed). Both facts are recorded in
   §7k; the second is why the court needs `ZFSVM_WORKDIR` on a disk-backed mount.
+
+## 15. The WORM S3 gateway is correct, not fast (and has no MinIO comparison)
+
+The OrFS-S3 gateway (`cmd/orfs-s3`, `docs/S3-GATEWAY.md`, `docs/BENCH.md` §7l) is
+measured. What **is** established:
+
+- It is a working WORM S3 surface: PUT/GET/HEAD/LIST work, DELETE is refused with
+  403 while an object is under retention or legal hold, and the WORM correctness
+  arm passes end to end (retain put 200, delete 403 `AccessDenied`, the object
+  still reads back byte-identical, legal hold likewise).
+- GET through it is fast (~87k ops/s at 64 clients, 4 KiB).
+
+What is **not** established, and must not be claimed:
+
+- **It is not a high-throughput endpoint.** PUT is ~57 ops/s single-client
+  (p50 ~17 ms) and does **not** improve with concurrency (58 ops/s at 64 clients,
+  p50 1.10 s). The premise that the gateway would reach a batched ~233k ops/s is
+  **refuted by measurement**: `internal/namespace` holds its write mutex across
+  every `Publish`, so writes serialize and the log's group committer never sees a
+  batch (`orfs_group_commit_batch_size` stays 1). Per append the gateway is slower
+  than the FUSE audit sink's 149 rec/s, because each PUT is a full object
+  transaction (inode + dentry + WORM xattr + data extent).
+- **It is not the manifested read path.** Measured both ways, `-manifest` off
+  leaves every PUT row statistically unchanged (56.9/57.6 vs 57.4/58.2 ops/s). The
+  EKBLOOM publication is not the PUT bottleneck.
+- **No MinIO comparison exists.** MinIO's public images are no longer pullable
+  (Docker Hub and Quay both refuse access); the receipt records `MinIO:
+  unavailable` with that reason and no MinIO number is claimed. A reachable
+  image can be supplied via `ORFS_MINIO_IMAGE`.
+- **The S3 surface is deliberately partial.** No multipart, versioning, lifecycle,
+  SSE, ACLs, presigned URLs, chunked-upload signatures, or virtual-host
+  addressing; SigV4 is header-based only. Clients that stream single-shot PUTs
+  (or fall back to them) work; those that require multipart do not.
+- **One host, one run, one shape.** 1 and 64 clients, 4 KiB and 1 MiB objects,
+  bounded windows. No long-run endurance, no multi-node, no cross-host numbers.
+- **An environment constraint is recorded, not hidden:** on this host Docker's
+  data root is a small tmpfs, so the court keeps its measured payload on a
+  disk-backed bind mount (`S3WORK`) or an arm hits `ENOSPC`.
+
+The route to a *fast* WORM S3 endpoint is therefore a change in
+`internal/namespace` (stage the mutation and release the write lock across
+`Publish`, so the log's group committer can batch), not a gateway flag.
